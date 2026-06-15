@@ -24,6 +24,7 @@ public sealed partial class ChatViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]
     [NotifyCanExecuteChangedFor(nameof(ConfirmCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ResetCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -109,6 +110,19 @@ public sealed partial class ChatViewModel : ObservableObject
         _chat.CancelPending();
         PendingPreview = null;
         Messages.Add(ChatMessageVm.FromSystem("Đã hủy thao tác."));
+    }
+
+    // ── New chat ─────────────────────────────────────────────────────────────
+
+    private bool CanReset() => !IsBusy;
+
+    [RelayCommand(CanExecute = nameof(CanReset))]
+    private void Reset()
+    {
+        _chat.Reset();
+        Messages.Clear();
+        PendingPreview = null;
+        InputText = string.Empty;
     }
 
     // ── Shared ───────────────────────────────────────────────────────────────

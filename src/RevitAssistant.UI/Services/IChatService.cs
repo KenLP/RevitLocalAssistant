@@ -21,6 +21,9 @@ public interface IChatService
 
     /// <summary>Discard the write that is awaiting confirmation.</summary>
     void CancelPending();
+
+    /// <summary>Start a fresh conversation — clears history and any pending write.</summary>
+    void Reset();
 }
 
 /// <summary>

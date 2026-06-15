@@ -27,6 +27,8 @@ public sealed class ChatViewModelTests
             return Task.FromResult(new ChatTurn(new[] { new ChatReply("đã ghi") }));
         }
         public void CancelPending() => CancelCount++;
+        public int ResetCount { get; private set; }
+        public void Reset() => ResetCount++;
     }
 
     private sealed class ThrowingChatService : IChatService
@@ -36,6 +38,7 @@ public sealed class ChatViewModelTests
         public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default)
             => throw new InvalidOperationException("boom");
         public void CancelPending() { }
+        public void Reset() { }
     }
 
     private sealed class GatedChatService : IChatService
@@ -45,6 +48,7 @@ public sealed class ChatViewModelTests
         public Task<ChatTurn> SendAsync(string userInput, CancellationToken ct = default) => Gate.Task;
         public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default) => Gate.Task;
         public void CancelPending() { }
+        public void Reset() { }
     }
 
     private static ChatTurn Reply(string text, bool isError = false) =>
@@ -177,6 +181,23 @@ public sealed class ChatViewModelTests
         var vm = new ChatViewModel(new FakeChatService(Reply("ok")));
         vm.ConfirmCommand.CanExecute(null).Should().BeFalse();
         vm.CancelCommand.CanExecute(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Reset_ClearsMessagesPendingAndCallsService()
+    {
+        var preview = new ChangePreview("Sửa", "tóm tắt", Array.Empty<PreviewRow>(), 1);
+        var fake = new FakeChatService(new ChatTurn(new[] { new ChatReply("hi") }, preview));
+        var vm = new ChatViewModel(fake) { InputText = "x" };
+        await vm.SendCommand.ExecuteAsync(null);
+        vm.Messages.Should().NotBeEmpty();
+
+        vm.ResetCommand.Execute(null);
+
+        fake.ResetCount.Should().Be(1);
+        vm.Messages.Should().BeEmpty();
+        vm.HasPending.Should().BeFalse();
+        vm.InputText.Should().BeEmpty();
     }
 
     // ── CanExecute ───────────────────────────────────────────────────────────

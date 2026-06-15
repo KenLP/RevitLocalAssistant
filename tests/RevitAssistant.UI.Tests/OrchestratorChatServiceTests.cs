@@ -53,7 +53,9 @@ public sealed class OrchestratorChatServiceTests
     private static JsonObject Err(string code, string msg) =>
         new() { ["ok"] = false, ["error"] = new JsonObject { ["code"] = code, ["message"] = msg } };
 
-    private static OrchestratorChatService Make(FakeLlm llm, FakeBridge bridge) => new(llm, bridge);
+    // Pass an empty schema string so the service skips the live list_levels +
+    // list_categories fetch; tests then see only the tool calls they script.
+    private static OrchestratorChatService Make(FakeLlm llm, FakeBridge bridge) => new(llm, bridge, "");
 
     // ── Read flow ────────────────────────────────────────────────────────────
 
@@ -118,7 +120,7 @@ public sealed class OrchestratorChatServiceTests
     }
 
     [Fact]
-    public async Task DryRunFails_ReportsErrorAndNoPending()
+    public async Task DryRunFails_FeedsBackSilently_ModelSelfCorrects()
     {
         var llm = new FakeLlm(
             Calls(Echo(), Tc("set_parameter_batch",
@@ -130,8 +132,44 @@ public sealed class OrchestratorChatServiceTests
         var turn = await svc.SendAsync("đặt nope");
 
         turn.Pending.Should().BeNull();
-        turn.Replies.Should().Contain(r => r.IsError && r.Text.Contains("Không thể thực hiện"));
+        // No alarming red bubble for the intermediate failure — only the final answer.
+        turn.Replies.Should().NotContain(r => r.IsError);
+        turn.Replies.Should().Contain(r => r.Text == "Xin lỗi, tham số không tồn tại.");
         bridge.Calls.Should().ContainSingle(c => c.DryRun);
+    }
+
+    [Fact]
+    public async Task FirstSend_FetchesLiveSchema_WhenNoStaticSchema()
+    {
+        var llm = new FakeLlm(Text("Chào bạn."));
+        var bridge = new FakeBridge((cmd, _, _) => cmd switch
+        {
+            "list_levels" => Ok(new JsonObject { ["levels"] = new JsonArray() }),
+            "list_categories" => Ok(new JsonObject { ["categories"] = new JsonArray() }),
+            _ => Ok(),
+        });
+
+        // No schema arg → live fetch path.
+        var svc = new OrchestratorChatService(llm, bridge);
+        await svc.SendAsync("xin chào");
+
+        bridge.Calls.Should().Contain(c => c.Cmd == "list_levels");
+        bridge.Calls.Should().Contain(c => c.Cmd == "list_categories");
+    }
+
+    [Fact]
+    public async Task Reset_StartsFreshConversation()
+    {
+        var llm = new FakeLlm(Text("một"), Text("hai"));
+        var bridge = new FakeBridge((_, _, _) => Ok());
+        var svc = Make(llm, bridge);
+
+        await svc.SendAsync("lần 1");
+        svc.Reset();
+        var turn = await svc.SendAsync("lần 2");
+
+        turn.Replies.Should().Contain(r => r.Text == "hai");
+        llm.CallCount.Should().Be(2);
     }
 
     // ── Clarify ──────────────────────────────────────────────────────────────

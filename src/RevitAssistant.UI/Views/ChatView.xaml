@@ -70,15 +70,23 @@
         <!-- Header -->
         <Border Grid.Row="0" Padding="8,6" Margin="2,2,2,4" CornerRadius="8"
                 Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="🤖" FontSize="16" VerticalAlignment="Center" />
-                <StackPanel Margin="8,0,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="🤖" FontSize="16" VerticalAlignment="Center" />
+                <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
                     <TextBlock Text="Trợ lý Revit (Offline)" FontWeight="SemiBold"
                                Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
                     <TextBlock Text="Tiếng Việt · English · Qwen2.5" FontSize="10" Opacity="0.7"
                                Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
                 </StackPanel>
-            </StackPanel>
+                <Button Grid.Column="2" Content="🗑 Xóa" Command="{Binding ResetCommand}"
+                        VerticalAlignment="Center" Padding="8,3" FontSize="11"
+                        ToolTip="Xóa hội thoại, bắt đầu phiên mới" />
+            </Grid>
         </Border>
 
         <!-- Messages -->

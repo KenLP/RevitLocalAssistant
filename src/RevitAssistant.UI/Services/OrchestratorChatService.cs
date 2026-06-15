@@ -48,12 +48,45 @@ public sealed class OrchestratorChatService : IChatService
 
     public async Task<ChatTurn> SendAsync(string userInput, CancellationToken ct = default)
     {
-        if (_conversation.Count == 0)
-            _conversation.Add(ChatMessage.System(AssistantPrompt.Build(_modelSchemaJson)));
-
+        await EnsureInitializedAsync(ct).ConfigureAwait(false);
         _conversation.Add(ChatMessage.User(userInput));
         _pendingWrite = null;
         return await RunLoopAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Clear the conversation (and any pending write) — the "new chat" action.</summary>
+    public void Reset()
+    {
+        _conversation.Clear();
+        _pendingWrite = null;
+    }
+
+    /// <summary>
+    /// On the first message, seed the system prompt. If no static schema was
+    /// supplied, fetch the real levels + categories from the active document so
+    /// the model is grounded in names that actually exist.
+    /// </summary>
+    private async Task EnsureInitializedAsync(CancellationToken ct)
+    {
+        if (_conversation.Count > 0) return;
+
+        var schema = _modelSchemaJson ?? await TryBuildSchemaAsync(ct).ConfigureAwait(false);
+        _conversation.Add(ChatMessage.System(AssistantPrompt.Build(schema)));
+    }
+
+    private async Task<string?> TryBuildSchemaAsync(CancellationToken ct)
+    {
+        try
+        {
+            var empty = new JsonObject();
+            var levels = await _revit.CallAsync("list_levels", empty, false, ct).ConfigureAwait(false);
+            var cats = await _revit.CallAsync("list_categories", new JsonObject(), false, ct).ConfigureAwait(false);
+            return ModelSchema.Build(levels, cats);
+        }
+        catch
+        {
+            return null;   // no document / dispatcher not ready → fall back to generic prompt
+        }
     }
 
     public async Task<ChatTurn> ConfirmAsync(CancellationToken ct = default)
@@ -148,10 +181,13 @@ public sealed class OrchestratorChatService : IChatService
 
                     if (!IsOk(dry))
                     {
-                        replies.Add(new ChatReply("Không thể thực hiện: " + ErrorOf(dry), IsError: true));
+                        // Feed the failure back silently and let the model self-correct
+                        // (it often invents an id on the first try, then calls
+                        // find_elements). Surfacing every intermediate failure as a red
+                        // bubble just confuses the user; the final answer explains.
                         AppendToolResult(tc, dry);
                         DeferRemaining(calls, k + 1);
-                        reprompt = true;     // let the LLM react to the failure
+                        reprompt = true;
                         break;
                     }
 

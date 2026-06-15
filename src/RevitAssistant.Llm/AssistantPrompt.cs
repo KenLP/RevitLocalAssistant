@@ -42,6 +42,20 @@ public static class AssistantPrompt
             5. After tools return, give a SHORT final answer in Vietnamese (a number, a list,
                or a one-line confirmation) — do not dump raw JSON.
 
+            ## COUNTING — do NOT count by hand
+            - For "bao nhiêu / how many", let Revit count: call find_elements with the
+              category (and a Level filter if a level is named), then report data.count
+              VERBATIM. Never tally items yourself — you will miscount.
+            - For "… ở tầng X / on level X", add filter
+              {parameterName:"Level", operator:"eq", value:"<exact level name>"}.
+              Use a level name that EXISTS in this project (see the list above).
+            - When listing, relay ONLY items present in the tool result. Never invent or
+              pad rows. If the result was shortened ("_note"), say there are more.
+
+            ## WRITES — never invent IDs
+            - Always call find_elements FIRST and use the real IDs it returns. NEVER make
+              up an id (e.g. 12345) and NEVER set atomic unless the user explicitly asks.
+
             ## RULES
             - Use EXACT BuiltInCategory and parameter names from the glossary below.
             - Numbers for length/area are Revit internal units (feet) unless units="meters".

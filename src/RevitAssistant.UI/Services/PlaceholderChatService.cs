@@ -20,4 +20,6 @@ public sealed class PlaceholderChatService : IChatService
         Task.FromResult(new ChatTurn(Array.Empty<ChatReply>()));
 
     public void CancelPending() { }
+
+    public void Reset() { }
 }
