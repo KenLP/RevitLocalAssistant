@@ -146,10 +146,10 @@ public static class ToolSpecAdapter
                         "type": "object",
                         "properties": {
                           "parameterName": { "type": "string" },
-                          "operator": { "type": "string", "enum": ["eq","neq","contains","gt","lt","gte","lte"] },
+                          "operator": { "type": "string", "enum": ["eq","neq","contains","starts_with","ends_with","regex","not_regex","gt","lt","gte","lte","is_empty","not_empty"] },
                           "value": { }
                         },
-                        "required": ["parameterName", "value"]
+                        "required": ["parameterName"]
                       }
                     }
                   },
@@ -200,10 +200,10 @@ public static class ToolSpecAdapter
                         "type": "object",
                         "properties": {
                           "parameterName": { "type": "string" },
-                          "operator": { "type": "string", "enum": ["eq","neq","contains","gt","lt","gte","lte"] },
+                          "operator": { "type": "string", "enum": ["eq","neq","contains","starts_with","ends_with","regex","not_regex","gt","lt","gte","lte","is_empty","not_empty"] },
                           "value": { }
                         },
-                        "required": ["parameterName", "value"]
+                        "required": ["parameterName"]
                       }
                     }
                   },
@@ -238,14 +238,14 @@ public static class ToolSpecAdapter
                           },
                           "operator": {
                             "type": "string",
-                            "enum": ["eq","neq","contains","gt","lt","gte","lte"],
-                            "description": "eq=equals, neq=not_equals, contains=string contains, gt/lt/gte/lte=numeric."
+                            "enum": ["eq","neq","contains","starts_with","ends_with","regex","not_regex","gt","lt","gte","lte","is_empty","not_empty"],
+                            "description": "eq, neq, contains, starts_with, ends_with, regex (value=.NET regex, e.g. '^\\\\d+ MIN$'), gt/lt/gte/lte (numeric), is_empty / not_empty (no value needed)."
                           },
                           "value": {
                             "description": "The value to compare against (string or number)."
                           }
                         },
-                        "required": ["parameterName", "value"]
+                        "required": ["parameterName"]
                       }
                     },
                     "fields": {

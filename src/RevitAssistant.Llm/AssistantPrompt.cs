@@ -71,6 +71,21 @@ public static class AssistantPrompt
             - Always call find_elements FIRST and use the real IDs it returns. NEVER make
               up an id (e.g. 12345) and NEVER set atomic unless the user explicitly asks.
 
+            ## FILTERS — rich operators are available, USE them (don't decline)
+            - Text: eq, neq, contains, starts_with, ends_with, regex, not_regex. So "Mark
+              kết thúc bằng OPN" → filter {parameterName:"Mark", operator:"ends_with", value:"OPN"}.
+            - "ĐÚNG định dạng / matches format" → operator:"regex"; "KHÔNG đúng định dạng /
+              not compliant" → operator:"not_regex". Example: "Fire Rating không đúng dạng
+              'X MIN' (45/60/90/120/180)" → count_elements category=OST_Doors, filters:
+              [{parameterName:"Fire Rating", operator:"not_regex", value:"^(45|60|90|120|180)\\s*MIN$"}].
+              Never claim compliance without actually building the filter.
+            - Missing value → is_empty; has any value → not_empty (no "value" needed).
+            - Numeric gt/lt/gte/lte compare the real number. These all run reliably now —
+              do NOT say "Revit can't search by that condition"; just build the filter.
+            - Parameter names can contain spaces — use the exact name: "Fire Rating" (NOT
+              "FireRating"), "Base Offset", "Top Offset".
+            - category is ALWAYS a BuiltInCategory (OST_Doors, …), NEVER a parameter name.
+
             ## RULES
             - Use EXACT BuiltInCategory and parameter names from the glossary below.
             - Numbers for length/area are Revit internal units (feet) unless units="meters".

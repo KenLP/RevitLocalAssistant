@@ -191,6 +191,15 @@ public sealed class OrchestratorChatService : IChatService
                     continue;
                 }
 
+                if (tc.FunctionName == "find_elements")
+                {
+                    // Intercepted so filtering runs client-side (rich operators +
+                    // correct numeric/text matching), not via Core's limited filters.
+                    var found = await FindElementsAsync(tc, ct).ConfigureAwait(false);
+                    AppendToolResult(tc, found);
+                    continue;
+                }
+
                 if (WriteTools.Contains(tc.FunctionName))
                 {
                     var dry = await ExecuteAsync(tc, dryRun: true, ct).ConfigureAwait(false);
@@ -234,10 +243,97 @@ public sealed class OrchestratorChatService : IChatService
                 JsonResultError("deferred", "Sẽ xử lý sau khi thao tác trước được giải quyết."));
     }
 
+    private const int FetchLimit = 5000;   // Core's hard cap
+    private const int ListLimit = 40;      // rows returned when listing (== ResultTrimmer cap)
+    private const string FetchTruncatedNote =
+        "⚠️ Danh mục có hơn 5000 phần tử; chỉ lọc trên 5000 phần tử đầu — " +
+        "số đếm là CHƯA đầy đủ. Hãy nói rõ với người dùng.";
+
     /// <summary>
-    /// count_elements: run find_elements (high limit, projecting the groupBy field)
-    /// then aggregate the rows in C#. Returns an exact { total, groups } summary.
+    /// Fetch a category from Revit (projecting the fields the filters/output need),
+    /// then filter CLIENT-SIDE with the rich operator set (ends_with, regex,
+    /// is_empty, correct numeric compares). Returns a find_elements-shaped envelope
+    /// whose data.elements/count are already filtered; errors pass through.
     /// </summary>
+    private async Task<JsonObject> FetchFilteredAsync(
+        string category, JsonArray? filtersJson, IEnumerable<string> extraFields, CancellationToken ct)
+    {
+        var conds = ElementFilter.Parse(filtersJson);
+
+        var fields = new JsonArray();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in ElementFilter.Params(conds).Concat(extraFields))
+            if (!string.IsNullOrWhiteSpace(p) && seen.Add(p)) fields.Add(p);
+
+        var findParams = new JsonObject { ["category"] = category, ["limit"] = FetchLimit };
+        if (fields.Count > 0) findParams["fields"] = fields;
+
+        var env = await _revit.CallAsync("find_elements", findParams, false, ct).ConfigureAwait(false);
+        if (!IsOk(env)) return env;
+
+        var data = env["data"] as JsonObject ?? new JsonObject();
+        var elements = data["elements"] as JsonArray ?? new JsonArray();
+        var truncated = data["truncated"] is JsonValue tv && tv.TryGetValue<bool>(out var t) && t;
+
+        // Move matched nodes out of the fetched array (we own and discard it) instead
+        // of cloning — avoids copying up to 5000 nodes for count/aggregate callers.
+        HashSet<JsonNode>? matchedSet = conds.Count == 0
+            ? null
+            : new HashSet<JsonNode>(ElementFilter.Apply(elements, conds), ReferenceEqualityComparer.Instance);
+
+        var outArr = new JsonArray();
+        for (var i = 0; i < elements.Count; i++)
+        {
+            var node = elements[i];
+            if (node is null) continue;
+            if (matchedSet is null || matchedSet.Contains(node))
+            {
+                elements[i] = null;         // detach → re-parent without cloning
+                outArr.Add(node);
+            }
+        }
+
+        var outData = new JsonObject
+        {
+            ["count"] = outArr.Count,
+            ["elements"] = outArr,
+            ["truncated"] = truncated,
+        };
+        if (truncated) outData["note"] = FetchTruncatedNote;
+        return new JsonObject { ["ok"] = true, ["data"] = outData };
+    }
+
+    /// <summary>find_elements: list elements matching rich client-side filters.</summary>
+    private async Task<JsonObject> FindElementsAsync(ToolCall tc, CancellationToken ct)
+    {
+        JsonObject args;
+        try { args = tc.ParseArguments(); }
+        catch (Exception ex) { return JsonResultError("bad_arguments", ex.Message); }
+
+        var category = args["category"]?.GetValue<string>();
+        if (string.IsNullOrWhiteSpace(category))
+            return JsonResultError("bad_request", "find_elements cần 'category'.");
+
+        var env = await FetchFilteredAsync(
+            category!, args["filters"] as JsonArray, StringList(args["fields"]), ct).ConfigureAwait(false);
+        if (!IsOk(env)) return env;
+
+        // Cap the returned rows to the model's limit (≤ ListLimit so ResultTrimmer
+        // never re-trims); keep data.count = the true match total and say so.
+        var displayLimit = Math.Clamp(TryGetInt(args["limit"]) ?? ListLimit, 1, ListLimit);
+        var data = (JsonObject)env["data"]!;
+        var total = TryGetInt(data["count"]) ?? 0;
+        if (data["elements"] is JsonArray arr && arr.Count > displayLimit)
+        {
+            var capped = new JsonArray();
+            for (var i = 0; i < displayLimit; i++) { var n = arr[i]; arr[i] = null; capped.Add(n); }
+            data["elements"] = capped;
+            data["listNote"] = $"Hiển thị {displayLimit}/{total} kết quả khớp.";
+        }
+        return env;
+    }
+
+    /// <summary>count_elements: count (+ groupBy) over rich-filtered elements.</summary>
     private async Task<JsonObject> CountElementsAsync(ToolCall tc, CancellationToken ct)
     {
         JsonObject args;
@@ -249,26 +345,17 @@ public sealed class OrchestratorChatService : IChatService
             return JsonResultError("bad_request", "count_elements cần 'category'.");
 
         var groupBy = args["groupBy"]?.GetValue<string>();
+        var extra = string.IsNullOrWhiteSpace(groupBy) ? Array.Empty<string>() : new[] { groupBy! };
 
-        var findParams = new JsonObject
-        {
-            ["category"] = category,
-            ["limit"] = 5000,
-        };
-        if ((args["filters"] as JsonArray)?.DeepClone() is JsonArray filters)
-            findParams["filters"] = filters;
-        if (!string.IsNullOrWhiteSpace(groupBy))
-            findParams["fields"] = new JsonArray { groupBy };
-
-        var env = await _revit.CallAsync("find_elements", findParams, false, ct).ConfigureAwait(false);
+        var env = await FetchFilteredAsync(category!, args["filters"] as JsonArray, extra, ct)
+            .ConfigureAwait(false);
         return Aggregator.Summarize(env, groupBy);
     }
 
     /// <summary>
-    /// aggregate_elements: sum/min/max/avg of a numeric parameter (e.g. Area,
-    /// Volume) computed in C#, with unit conversion (ft²→m², ft³→m³) and optional
-    /// top-N / group-by. Floors &amp; walls expose computed Area/Volume, so totals
-    /// need no thickness.
+    /// aggregate_elements: sum/min/max/avg of a numeric parameter over rich-filtered
+    /// elements, with unit conversion (ft²→m², ft³→m³) + optional top-N / group-by.
+    /// Floors &amp; walls expose computed Area/Volume, so totals need no thickness.
     /// </summary>
     private async Task<JsonObject> AggregateElementsAsync(ToolCall tc, CancellationToken ct)
     {
@@ -289,22 +376,22 @@ public sealed class OrchestratorChatService : IChatService
         var top = Math.Clamp(TryGetInt(args["top"]) ?? 0, 0, 40);
         var (factor, label) = Aggregator.ResolveUnit(unit, parameter!);
 
-        var fields = new JsonArray { parameter };
-        if (!string.IsNullOrWhiteSpace(groupBy) &&
-            !string.Equals(groupBy, parameter, StringComparison.OrdinalIgnoreCase))
-            fields.Add(groupBy);
+        var extra = new List<string> { parameter! };
+        if (!string.IsNullOrWhiteSpace(groupBy)) extra.Add(groupBy!);
 
-        var findParams = new JsonObject
-        {
-            ["category"] = category,
-            ["limit"] = 5000,
-            ["fields"] = fields,
-        };
-        if ((args["filters"] as JsonArray)?.DeepClone() is JsonArray filters)
-            findParams["filters"] = filters;
-
-        var env = await _revit.CallAsync("find_elements", findParams, false, ct).ConfigureAwait(false);
+        var env = await FetchFilteredAsync(category!, args["filters"] as JsonArray, extra, ct)
+            .ConfigureAwait(false);
         return Aggregator.SummarizeNumeric(env, parameter!, factor, label, top, groupBy);
+    }
+
+    private static IEnumerable<string> StringList(JsonNode? node)
+    {
+        if (node is not JsonArray arr) yield break;
+        foreach (var n in arr)
+        {
+            var s = (n as JsonValue)?.TryGetValue<string>(out var v) == true ? v : n?.ToString();
+            if (!string.IsNullOrWhiteSpace(s)) yield return s!;
+        }
     }
 
     private static int? TryGetInt(JsonNode? n)

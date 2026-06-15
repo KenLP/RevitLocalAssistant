@@ -148,6 +148,76 @@ public sealed class OrchestratorChatServiceTests
         turn.Replies.Should().Contain(r => r.Text.Contains("5.663"));
     }
 
+    [Fact]
+    public async Task FindElements_FiltersClientSide_ProjectsParamNotServerFilter()
+    {
+        var llm = new FakeLlm(
+            Calls(Echo(), Tc("find_elements",
+                """{"category":"OST_Doors","filters":[{"parameterName":"Mark","operator":"ends_with","value":"OPN"}]}""", "f1")),
+            Text("Có 1 cửa kết thúc bằng OPN."));
+        JsonObject? sentArgs = null;
+        var bridge = new FakeBridge((cmd, args, _) =>
+        {
+            sentArgs = args;
+            return new JsonObject
+            {
+                ["ok"] = true,
+                ["data"] = new JsonObject
+                {
+                    ["count"] = 3,
+                    ["elements"] = new JsonArray
+                    {
+                        new JsonObject { ["id"] = 1, ["name"] = "d1", ["fields"] = new JsonObject { ["Mark"] = "10OPN" } },
+                        new JsonObject { ["id"] = 2, ["name"] = "d2", ["fields"] = new JsonObject { ["Mark"] = "10CLS" } },
+                        new JsonObject { ["id"] = 3, ["name"] = "d3", ["fields"] = new JsonObject { ["Mark"] = "OPN-9" } },
+                    },
+                },
+            };
+        });
+
+        var svc = Make(llm, bridge);
+        await svc.SendAsync("cửa nào Mark kết thúc OPN");
+
+        sentArgs.Should().NotBeNull();
+        sentArgs!["filters"].Should().BeNull("filtering is client-side, not pushed to Core");
+        ((JsonArray)sentArgs["fields"]!).Select(n => n!.GetValue<string>())
+            .Should().Contain("Mark");
+    }
+
+    [Fact]
+    public async Task CountElements_WithRichFilter_ProjectsFilterParam()
+    {
+        var llm = new FakeLlm(
+            Calls(Echo(), Tc("count_elements",
+                """{"category":"OST_Doors","filters":[{"parameterName":"Fire Rating","operator":"is_empty"}]}""", "c1")),
+            Text("Có 2 cửa thiếu Fire Rating."));
+        JsonObject? sentArgs = null;
+        var bridge = new FakeBridge((cmd, args, _) =>
+        {
+            sentArgs = args;
+            return new JsonObject
+            {
+                ["ok"] = true,
+                ["data"] = new JsonObject
+                {
+                    ["count"] = 3,
+                    ["elements"] = new JsonArray
+                    {
+                        new JsonObject { ["id"] = 1, ["name"] = "d1", ["fields"] = new JsonObject { ["Fire Rating"] = "60 MIN" } },
+                        new JsonObject { ["id"] = 2, ["name"] = "d2" },
+                        new JsonObject { ["id"] = 3, ["name"] = "d3" },
+                    },
+                },
+            };
+        });
+
+        var svc = Make(llm, bridge);
+        await svc.SendAsync("bao nhiêu cửa thiếu Fire Rating");
+
+        ((JsonArray)sentArgs!["fields"]!).Select(n => n!.GetValue<string>())
+            .Should().Contain("Fire Rating");
+    }
+
     // ── Write flow ───────────────────────────────────────────────────────────
 
     [Fact]
