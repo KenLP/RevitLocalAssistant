@@ -1,6 +1,8 @@
+using System.Reflection;
 using Autodesk.Revit.UI;
 using RevitMCPAddin;
 using RevitMCPAddin.Commands;
+using RevitAssistant.UI;
 
 namespace RevitAssistant;
 
@@ -16,14 +18,19 @@ namespace RevitAssistant;
 ///   and communicate with Revit only through EnqueueAsync / EnqueueBatchAsync.
 ///
 /// Phases:
-///   Phase 1 (this): wire up Core + ExternalEvent dispatcher — add-in loads cleanly.
-///   Phase 2: inject dispatcher into OllamaOrchestrator; console-harness dry-run.
-///   Phase 3: register DockablePane + Ribbon button for the chat panel.
+///   Phase 1: wire up Core + ExternalEvent dispatcher — add-in loads cleanly.
+///   Phase 2: LLM layer (OllamaClient, IntentParser) — standalone.
+///   Phase 3 (this): DockablePane chat panel + Ribbon button. Placeholder chat service.
+///   Phase 4: real orchestrator (Ollama → dry-run → preview → confirm → commit).
 /// </summary>
 public sealed class App : IExternalApplication
 {
-    // Exposed as internal so Phase 2/3 components in this project can access them.
-    // Phase 3: the WPF panel's ViewModel needs the dispatcher to call EnqueueAsync.
+    /// <summary>Stable id for the chat dockable pane (referenced by the ribbon command).</summary>
+    public static readonly DockablePaneId PaneId =
+        new(new Guid("C8E2A1F4-3D7B-4A9E-8C16-2F5B7D9E4A03"));
+
+    // Exposed as internal so Phase 4's orchestrator (in this project) can dispatch
+    // Revit commands through EnqueueAsync / EnqueueBatchAsync.
     internal static RevitMCPExternalEventHandler? Dispatcher { get; private set; }
     internal static ExternalEvent? DispatcherEvent { get; private set; }
 
@@ -41,6 +48,9 @@ public sealed class App : IExternalApplication
             Dispatcher = handler;
             DispatcherEvent = extEvent;
 
+            RegisterChatPane(application);
+            CreateRibbon(application);
+
             Log($"[RevitAssistant] Ready — {registry.Names.Count()} commands registered.");
             return Result.Succeeded;
         }
@@ -57,6 +67,42 @@ public sealed class App : IExternalApplication
         Dispatcher = null;
         DispatcherEvent = null;
         return Result.Succeeded;
+    }
+
+    /// <summary>Create the chat panel and register it as a dockable pane.</summary>
+    private static void RegisterChatPane(UIControlledApplication application)
+    {
+        // Phase 3: placeholder service (offline, no model call).
+        // Phase 4 swaps in the real orchestrator implementing IChatService.
+        var view = new ChatView
+        {
+            DataContext = new ChatViewModel(new PlaceholderChatService()),
+        };
+        application.RegisterDockablePane(PaneId, "Trợ lý Revit", new AssistantPaneProvider(view));
+    }
+
+    /// <summary>Add the "AI Assistant" ribbon tab with a toggle button.</summary>
+    private static void CreateRibbon(UIControlledApplication application)
+    {
+        const string tab = "AI Assistant";
+        try { application.CreateRibbonTab(tab); } catch { /* already exists */ }
+
+        var panel = application.CreateRibbonPanel(tab, "Trợ lý");
+        var asmPath = Assembly.GetExecutingAssembly().Location;
+
+        var button = new PushButtonData(
+            "ShowRevitAssistant",
+            "Trợ lý\nAI",
+            asmPath,
+            "RevitAssistant.ShowAssistantCommand")
+        {
+            ToolTip = "Mở/đóng bảng Trợ lý AI (offline, tiếng Việt + English).",
+            LongDescription =
+                "Trợ lý Revit chạy hoàn toàn offline qua Ollama. Truy vấn model, "
+                + "kiểm tra tuân thủ, và sửa tham số hàng loạt với xem trước an toàn.",
+        };
+
+        panel.AddItem(button);
     }
 
     private static void Log(string msg)

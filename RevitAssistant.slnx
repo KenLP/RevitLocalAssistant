@@ -15,5 +15,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/RevitAssistant.Compliance.Tests/RevitAssistant.Compliance.Tests.csproj" />
     <Project Path="tests/RevitAssistant.Llm.Tests/RevitAssistant.Llm.Tests.csproj" />
+    <Project Path="tests/RevitAssistant.UI.Tests/RevitAssistant.UI.Tests.csproj" />
   </Folder>
 </Solution>

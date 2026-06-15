@@ -1,21 +1,67 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
 namespace RevitAssistant.UI;
 
-// ─── Phase 3 stub ────────────────────────────────────────────────────────────
-// Full MVVM implementation comes in Phase 3.  For now the type must exist so
-// the Addin project can reference it without compile errors.
-// ─────────────────────────────────────────────────────────────────────────────
-
+/// <summary>
+/// Drives the chat panel: owns the message list, the input box, and the send loop.
+/// All Revit/Ollama work is delegated to <see cref="IChatService"/>, so this class
+/// has no Revit API dependency and is unit-testable on any thread.
+/// </summary>
 public sealed partial class ChatViewModel : ObservableObject
 {
+    private readonly IChatService _chat;
+
+    public ObservableCollection<ChatMessageVm> Messages { get; } = new();
+
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SendCommand))]
     private string _inputText = string.Empty;
 
-    // Phase 3: bind to an ObservableCollection<ChatMessage>
-    // Phase 4: PreviewItems (elements affected by pending edit)
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SendCommand))]
+    private bool _isBusy;
 
-    [RelayCommand]
-    private Task SendAsync() => Task.CompletedTask; // Phase 4: full orchestrator call
+    public ChatViewModel(IChatService chat)
+    {
+        _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+    }
+
+    /// <summary>Design-time / XAML-preview constructor — seeds sample bubbles.</summary>
+    public ChatViewModel() : this(new PlaceholderChatService())
+    {
+        Messages.Add(ChatMessageVm.FromAssistant(
+            "Xin chào! Tôi là trợ lý Revit chạy offline. Hỏi tôi bằng tiếng Việt hoặc English."));
+        Messages.Add(ChatMessageVm.FromUser("Đổi 'Comments' = 'Đã duyệt' cho tất cả cửa thoát hiểm"));
+        Messages.Add(ChatMessageVm.FromAssistant("Hiểu là: cập nhật tham số Comments cho các cửa…"));
+    }
+
+    private bool CanSend() => !IsBusy && !string.IsNullOrWhiteSpace(InputText);
+
+    [RelayCommand(CanExecute = nameof(CanSend))]
+    private async Task SendAsync()
+    {
+        var text = InputText.Trim();
+        if (text.Length == 0) return;
+
+        Messages.Add(ChatMessageVm.FromUser(text));
+        InputText = string.Empty;
+        IsBusy = true;
+        try
+        {
+            var reply = await _chat.SendAsync(text).ConfigureAwait(true);
+            Messages.Add(reply.IsError
+                ? ChatMessageVm.FromError(reply.Text)
+                : ChatMessageVm.FromAssistant(reply.Text));
+        }
+        catch (Exception ex)
+        {
+            Messages.Add(ChatMessageVm.FromError($"Lỗi: {ex.Message}"));
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 }
