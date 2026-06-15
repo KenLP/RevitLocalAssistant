@@ -1,18 +1,23 @@
 namespace RevitAssistant.UI;
 
 /// <summary>
-/// Phase 3 placeholder. Confirms the panel is wired end-to-end without requiring
-/// Ollama to be running. Replaced by the real orchestrator in Phase 4.
+/// Offline fallback / design-time service. Confirms the panel is wired without
+/// requiring Ollama. Never produces a pending change.
+/// Replaced at runtime by <see cref="OrchestratorChatService"/>.
 /// </summary>
 public sealed class PlaceholderChatService : IChatService
 {
-    public Task<ChatReply> SendAsync(string userInput, CancellationToken ct = default)
+    public Task<ChatTurn> SendAsync(string userInput, CancellationToken ct = default)
     {
-        var reply =
+        var reply = new ChatReply(
             "✅ Bảng trợ lý hoạt động tốt.\n\n" +
             $"Bạn vừa nhập: “{userInput}”\n\n" +
-            "Bộ điều phối AI (Ollama → xem trước dry-run → xác nhận → ghi vào model) " +
-            "sẽ được kết nối ở Phase 4.";
-        return Task.FromResult(new ChatReply(reply));
+            "Bộ điều phối AI offline sẽ trả lời khi Ollama đang chạy.");
+        return Task.FromResult(new ChatTurn(new[] { reply }));
     }
+
+    public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default) =>
+        Task.FromResult(new ChatTurn(Array.Empty<ChatReply>()));
+
+    public void CancelPending() { }
 }

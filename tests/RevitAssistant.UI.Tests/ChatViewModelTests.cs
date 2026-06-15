@@ -10,39 +10,52 @@ public sealed class ChatViewModelTests
 
     private sealed class FakeChatService : IChatService
     {
-        private readonly ChatReply _reply;
+        private readonly ChatTurn _turn;
         public string? LastInput { get; private set; }
-        public FakeChatService(ChatReply reply) => _reply = reply;
-        public Task<ChatReply> SendAsync(string userInput, CancellationToken ct = default)
+        public int ConfirmCount { get; private set; }
+        public int CancelCount { get; private set; }
+        public FakeChatService(ChatTurn turn) => _turn = turn;
+
+        public Task<ChatTurn> SendAsync(string userInput, CancellationToken ct = default)
         {
             LastInput = userInput;
-            return Task.FromResult(_reply);
+            return Task.FromResult(_turn);
         }
+        public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default)
+        {
+            ConfirmCount++;
+            return Task.FromResult(new ChatTurn(new[] { new ChatReply("đã ghi") }));
+        }
+        public void CancelPending() => CancelCount++;
     }
 
     private sealed class ThrowingChatService : IChatService
     {
-        public Task<ChatReply> SendAsync(string userInput, CancellationToken ct = default)
+        public Task<ChatTurn> SendAsync(string userInput, CancellationToken ct = default)
             => throw new InvalidOperationException("boom");
+        public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default)
+            => throw new InvalidOperationException("boom");
+        public void CancelPending() { }
     }
 
     private sealed class GatedChatService : IChatService
     {
-        public readonly TaskCompletionSource<ChatReply> Gate =
+        public readonly TaskCompletionSource<ChatTurn> Gate =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public Task<ChatReply> SendAsync(string userInput, CancellationToken ct = default)
-            => Gate.Task;
+        public Task<ChatTurn> SendAsync(string userInput, CancellationToken ct = default) => Gate.Task;
+        public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default) => Gate.Task;
+        public void CancelPending() { }
     }
+
+    private static ChatTurn Reply(string text, bool isError = false) =>
+        new(new[] { new ChatReply(text, isError) });
 
     // ── Send happy path ──────────────────────────────────────────────────────
 
     [Fact]
     public async Task Send_AddsUserThenAssistantMessage()
     {
-        var vm = new ChatViewModel(new FakeChatService(new ChatReply("ok")))
-        {
-            InputText = "liệt kê phòng",
-        };
+        var vm = new ChatViewModel(new FakeChatService(Reply("ok"))) { InputText = "liệt kê phòng" };
 
         await vm.SendCommand.ExecuteAsync(null);
 
@@ -56,20 +69,15 @@ public sealed class ChatViewModelTests
     [Fact]
     public async Task Send_ClearsInputText()
     {
-        var vm = new ChatViewModel(new FakeChatService(new ChatReply("ok")))
-        {
-            InputText = "hello",
-        };
-
+        var vm = new ChatViewModel(new FakeChatService(Reply("ok"))) { InputText = "hello" };
         await vm.SendCommand.ExecuteAsync(null);
-
         vm.InputText.Should().BeEmpty();
     }
 
     [Fact]
     public async Task Send_TrimsWhitespaceFromUserMessage()
     {
-        var fake = new FakeChatService(new ChatReply("ok"));
+        var fake = new FakeChatService(Reply("ok"));
         var vm = new ChatViewModel(fake) { InputText = "  xin chào  " };
 
         await vm.SendCommand.ExecuteAsync(null);
@@ -81,13 +89,8 @@ public sealed class ChatViewModelTests
     [Fact]
     public async Task Send_ResetsBusyAfterCompletion()
     {
-        var vm = new ChatViewModel(new FakeChatService(new ChatReply("ok")))
-        {
-            InputText = "hi",
-        };
-
+        var vm = new ChatViewModel(new FakeChatService(Reply("ok"))) { InputText = "hi" };
         await vm.SendCommand.ExecuteAsync(null);
-
         vm.IsBusy.Should().BeFalse();
     }
 
@@ -96,11 +99,10 @@ public sealed class ChatViewModelTests
     [Fact]
     public async Task Send_ErrorReply_RendersErrorBubble()
     {
-        var vm = new ChatViewModel(new FakeChatService(new ChatReply("không tìm thấy", IsError: true)))
+        var vm = new ChatViewModel(new FakeChatService(Reply("không tìm thấy", isError: true)))
         {
             InputText = "x",
         };
-
         await vm.SendCommand.ExecuteAsync(null);
 
         vm.Messages[1].Kind.Should().Be(ChatMessageKind.Error);
@@ -111,13 +113,70 @@ public sealed class ChatViewModelTests
     public async Task Send_ServiceThrows_RendersErrorBubbleAndClearsBusy()
     {
         var vm = new ChatViewModel(new ThrowingChatService()) { InputText = "x" };
-
         await vm.SendCommand.ExecuteAsync(null);
 
         vm.Messages.Should().HaveCount(2);
         vm.Messages[1].Kind.Should().Be(ChatMessageKind.Error);
         vm.Messages[1].Text.Should().Contain("boom");
         vm.IsBusy.Should().BeFalse();
+    }
+
+    // ── Pending / confirm / cancel ───────────────────────────────────────────
+
+    [Fact]
+    public async Task Send_WithPending_SetsPendingAndDisablesSend()
+    {
+        var preview = new ChangePreview("Sửa", "tóm tắt", Array.Empty<PreviewRow>(), 3);
+        var turn = new ChatTurn(new[] { new ChatReply("hiểu là…") }, preview);
+        var vm = new ChatViewModel(new FakeChatService(turn)) { InputText = "đổi tham số" };
+
+        await vm.SendCommand.ExecuteAsync(null);
+
+        vm.HasPending.Should().BeTrue();
+        vm.PendingPreview.Should().Be(preview);
+        vm.ConfirmCommand.CanExecute(null).Should().BeTrue();
+        vm.CancelCommand.CanExecute(null).Should().BeTrue();
+
+        vm.InputText = "thêm yêu cầu";
+        vm.SendCommand.CanExecute(null).Should().BeFalse("must resolve the pending change first");
+    }
+
+    [Fact]
+    public async Task Confirm_CommitsAndClearsPending()
+    {
+        var preview = new ChangePreview("Sửa", "tóm tắt", Array.Empty<PreviewRow>(), 1);
+        var fake = new FakeChatService(new ChatTurn(Array.Empty<ChatReply>(), preview));
+        var vm = new ChatViewModel(fake) { InputText = "x" };
+        await vm.SendCommand.ExecuteAsync(null);
+
+        await vm.ConfirmCommand.ExecuteAsync(null);
+
+        fake.ConfirmCount.Should().Be(1);
+        vm.HasPending.Should().BeFalse();
+        vm.Messages.Should().Contain(m => m.Text == "đã ghi");
+    }
+
+    [Fact]
+    public async Task Cancel_DiscardsPendingAndAddsSystemBubble()
+    {
+        var preview = new ChangePreview("Sửa", "tóm tắt", Array.Empty<PreviewRow>(), 1);
+        var fake = new FakeChatService(new ChatTurn(Array.Empty<ChatReply>(), preview));
+        var vm = new ChatViewModel(fake) { InputText = "x" };
+        await vm.SendCommand.ExecuteAsync(null);
+
+        vm.CancelCommand.Execute(null);
+
+        fake.CancelCount.Should().Be(1);
+        vm.HasPending.Should().BeFalse();
+        vm.Messages.Last().Kind.Should().Be(ChatMessageKind.System);
+    }
+
+    [Fact]
+    public void ConfirmCancel_NoPending_CannotExecute()
+    {
+        var vm = new ChatViewModel(new FakeChatService(Reply("ok")));
+        vm.ConfirmCommand.CanExecute(null).Should().BeFalse();
+        vm.CancelCommand.CanExecute(null).Should().BeFalse();
     }
 
     // ── CanExecute ───────────────────────────────────────────────────────────
@@ -127,14 +186,14 @@ public sealed class ChatViewModelTests
     [InlineData("   ")]
     public void CanSend_EmptyOrWhitespaceInput_False(string input)
     {
-        var vm = new ChatViewModel(new FakeChatService(new ChatReply("ok"))) { InputText = input };
+        var vm = new ChatViewModel(new FakeChatService(Reply("ok"))) { InputText = input };
         vm.SendCommand.CanExecute(null).Should().BeFalse();
     }
 
     [Fact]
     public void CanSend_WithInput_True()
     {
-        var vm = new ChatViewModel(new FakeChatService(new ChatReply("ok"))) { InputText = "hi" };
+        var vm = new ChatViewModel(new FakeChatService(Reply("ok"))) { InputText = "hi" };
         vm.SendCommand.CanExecute(null).Should().BeTrue();
     }
 
@@ -144,12 +203,12 @@ public sealed class ChatViewModelTests
         var gated = new GatedChatService();
         var vm = new ChatViewModel(gated) { InputText = "hi" };
 
-        var sending = vm.SendCommand.ExecuteAsync(null);   // enters busy, awaits gate
+        var sending = vm.SendCommand.ExecuteAsync(null);
 
         vm.IsBusy.Should().BeTrue();
         vm.SendCommand.CanExecute(null).Should().BeFalse();
 
-        gated.Gate.SetResult(new ChatReply("done"));
+        gated.Gate.SetResult(Reply("done"));
         await sending;
 
         vm.IsBusy.Should().BeFalse();
@@ -191,26 +250,23 @@ public sealed class ChatMessageVmTests
     }
 
     [Fact]
-    public void FromError_HasErrorKind()
-    {
+    public void FromError_HasErrorKind() =>
         ChatMessageVm.FromError("oops").Kind.Should().Be(ChatMessageKind.Error);
-    }
 
     [Fact]
-    public void FromSystem_HasSystemKind()
-    {
+    public void FromSystem_HasSystemKind() =>
         ChatMessageVm.FromSystem("note").Kind.Should().Be(ChatMessageKind.System);
-    }
 }
 
 public sealed class PlaceholderChatServiceTests
 {
     [Fact]
-    public async Task SendAsync_EchoesUserInput()
+    public async Task SendAsync_EchoesUserInput_NoPending()
     {
         var svc = new PlaceholderChatService();
-        var reply = await svc.SendAsync("đổi tên tường");
-        reply.IsError.Should().BeFalse();
-        reply.Text.Should().Contain("đổi tên tường");
+        var turn = await svc.SendAsync("đổi tên tường");
+        turn.Pending.Should().BeNull();
+        turn.Replies.Should().ContainSingle();
+        turn.Replies[0].Text.Should().Contain("đổi tên tường");
     }
 }

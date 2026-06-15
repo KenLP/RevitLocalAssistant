@@ -64,6 +64,7 @@
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Header -->
@@ -125,8 +126,62 @@
                        Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
         </StackPanel>
 
+        <!-- Pending-change confirmation card -->
+        <Border Grid.Row="3" Margin="2,4,2,0" Padding="10,8" CornerRadius="8"
+                BorderThickness="1" BorderBrush="#D97706" Background="#FEF3C7"
+                Visibility="{Binding HasPending, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Text="{Binding PendingPreview.Title}" FontWeight="SemiBold"
+                           Foreground="#92400E" />
+                <TextBlock Text="{Binding PendingPreview.Summary}" TextWrapping="Wrap"
+                           Margin="0,2,0,6" Foreground="#92400E" />
+
+                <Border Background="#FFFBEB" CornerRadius="6" Padding="6"
+                        MaxHeight="160">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding PendingPreview.Rows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="0,1">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding Element}"
+                                                   FontFamily="Consolas" FontSize="11"
+                                                   Margin="0,0,8,0" Foreground="#78350F" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Detail}"
+                                                   FontSize="11" TextWrapping="Wrap">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#78350F" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsFailure}" Value="True">
+                                                            <Setter Property="Foreground" Value="#B91C1C" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                    <Button Content="Hủy" Command="{Binding CancelCommand}"
+                            MinWidth="64" Padding="8,4" Margin="0,0,6,0" />
+                    <Button Content="Xác nhận ghi" Command="{Binding ConfirmCommand}"
+                            MinWidth="100" Padding="8,4" FontWeight="SemiBold"
+                            Background="#16A34A" Foreground="White" BorderThickness="0" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
         <!-- Input -->
-        <Border Grid.Row="3" Margin="2,4,2,2" Padding="4" CornerRadius="8"
+        <Border Grid.Row="4" Margin="2,4,2,2" Padding="4" CornerRadius="8"
                 Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
             <Grid>
                 <Grid.ColumnDefinitions>

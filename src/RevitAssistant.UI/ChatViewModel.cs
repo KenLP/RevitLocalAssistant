@@ -5,7 +5,8 @@ using CommunityToolkit.Mvvm.Input;
 namespace RevitAssistant.UI;
 
 /// <summary>
-/// Drives the chat panel: owns the message list, the input box, and the send loop.
+/// Drives the chat panel: owns the message list, the input box, the send loop,
+/// and the confirm/cancel flow for pending model-writes.
 /// All Revit/Ollama work is delegated to <see cref="IChatService"/>, so this class
 /// has no Revit API dependency and is unit-testable on any thread.
 /// </summary>
@@ -21,7 +22,18 @@ public sealed partial class ChatViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConfirmCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     private bool _isBusy;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPending))]
+    [NotifyCanExecuteChangedFor(nameof(SendCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ConfirmCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
+    private ChangePreview? _pendingPreview;
+
+    public bool HasPending => PendingPreview is not null;
 
     public ChatViewModel(IChatService chat)
     {
@@ -37,7 +49,9 @@ public sealed partial class ChatViewModel : ObservableObject
         Messages.Add(ChatMessageVm.FromAssistant("Hiểu là: cập nhật tham số Comments cho các cửa…"));
     }
 
-    private bool CanSend() => !IsBusy && !string.IsNullOrWhiteSpace(InputText);
+    // ── Send ─────────────────────────────────────────────────────────────────
+
+    private bool CanSend() => !IsBusy && !HasPending && !string.IsNullOrWhiteSpace(InputText);
 
     [RelayCommand(CanExecute = nameof(CanSend))]
     private async Task SendAsync()
@@ -50,10 +64,8 @@ public sealed partial class ChatViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var reply = await _chat.SendAsync(text).ConfigureAwait(true);
-            Messages.Add(reply.IsError
-                ? ChatMessageVm.FromError(reply.Text)
-                : ChatMessageVm.FromAssistant(reply.Text));
+            var turn = await _chat.SendAsync(text).ConfigureAwait(true);
+            ApplyTurn(turn);
         }
         catch (Exception ex)
         {
@@ -63,5 +75,51 @@ public sealed partial class ChatViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    // ── Confirm / Cancel pending write ───────────────────────────────────────
+
+    private bool CanConfirm() => !IsBusy && HasPending;
+
+    [RelayCommand(CanExecute = nameof(CanConfirm))]
+    private async Task ConfirmAsync()
+    {
+        PendingPreview = null;
+        IsBusy = true;
+        try
+        {
+            var turn = await _chat.ConfirmAsync().ConfigureAwait(true);
+            ApplyTurn(turn);
+        }
+        catch (Exception ex)
+        {
+            Messages.Add(ChatMessageVm.FromError($"Lỗi khi ghi: {ex.Message}"));
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private bool CanCancel() => !IsBusy && HasPending;
+
+    [RelayCommand(CanExecute = nameof(CanCancel))]
+    private void Cancel()
+    {
+        _chat.CancelPending();
+        PendingPreview = null;
+        Messages.Add(ChatMessageVm.FromSystem("Đã hủy thao tác."));
+    }
+
+    // ── Shared ───────────────────────────────────────────────────────────────
+
+    private void ApplyTurn(ChatTurn turn)
+    {
+        foreach (var reply in turn.Replies)
+            Messages.Add(reply.IsError
+                ? ChatMessageVm.FromError(reply.Text)
+                : ChatMessageVm.FromAssistant(reply.Text));
+
+        PendingPreview = turn.Pending;
     }
 }

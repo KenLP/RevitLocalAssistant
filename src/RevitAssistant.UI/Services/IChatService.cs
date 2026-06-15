@@ -4,15 +4,30 @@ namespace RevitAssistant.UI;
 /// Abstraction the chat panel talks to. Keeps <see cref="ChatViewModel"/> free of
 /// Revit API and Ollama concrete types, so the panel is fully unit-testable.
 ///
+/// A turn may end with a <see cref="ChangePreview"/> when a model-write is awaiting
+/// the user's confirmation. The panel then shows Confirm/Cancel and calls
+/// <see cref="ConfirmAsync"/> or <see cref="CancelPending"/>.
+///
 /// Phase 3: <see cref="PlaceholderChatService"/> (offline, no model call).
-/// Phase 4: the real orchestrator (Ollama → dry-run → preview → confirm → commit)
-///          implements this same interface and is swapped in via the Addin.
+/// Phase 4: <see cref="OrchestratorChatService"/> (Ollama → dry-run → confirm → commit).
 /// </summary>
 public interface IChatService
 {
-    /// <summary>Send the user's message and get back the assistant's reply.</summary>
-    Task<ChatReply> SendAsync(string userInput, CancellationToken ct = default);
+    /// <summary>Send the user's message; run the agent loop until it needs the user.</summary>
+    Task<ChatTurn> SendAsync(string userInput, CancellationToken ct = default);
+
+    /// <summary>Commit the write that is currently awaiting confirmation, then continue.</summary>
+    Task<ChatTurn> ConfirmAsync(CancellationToken ct = default);
+
+    /// <summary>Discard the write that is awaiting confirmation.</summary>
+    void CancelPending();
 }
 
-/// <summary>One assistant reply. <see cref="IsError"/> renders as an error bubble.</summary>
+/// <summary>
+/// The result of one turn: bubbles to append, plus an optional pending change
+/// that requires the user's confirmation before it commits.
+/// </summary>
+public sealed record ChatTurn(IReadOnlyList<ChatReply> Replies, ChangePreview? Pending = null);
+
+/// <summary>One assistant bubble. <see cref="IsError"/> renders as an error bubble.</summary>
 public readonly record struct ChatReply(string Text, bool IsError = false);

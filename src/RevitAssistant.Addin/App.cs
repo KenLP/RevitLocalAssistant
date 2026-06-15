@@ -2,6 +2,7 @@ using System.Reflection;
 using Autodesk.Revit.UI;
 using RevitMCPAddin;
 using RevitMCPAddin.Commands;
+using RevitAssistant.Llm;
 using RevitAssistant.UI;
 
 namespace RevitAssistant;
@@ -72,12 +73,13 @@ public sealed class App : IExternalApplication
     /// <summary>Create the chat panel and register it as a dockable pane.</summary>
     private static void RegisterChatPane(UIControlledApplication application)
     {
-        // Phase 3: placeholder service (offline, no model call).
-        // Phase 4 swaps in the real orchestrator implementing IChatService.
-        var view = new ChatView
-        {
-            DataContext = new ChatViewModel(new PlaceholderChatService()),
-        };
+        // Phase 4: real orchestrator — local Ollama + Revit dispatcher bridge.
+        // Defaults: http://localhost:11434, model qwen2.5:7b-instruct.
+        var llm = new OllamaClient();
+        var bridge = new RevitBridge();
+        var chat = new OrchestratorChatService(llm, bridge);
+
+        var view = new ChatView { DataContext = new ChatViewModel(chat) };
         application.RegisterDockablePane(PaneId, "Trợ lý Revit", new AssistantPaneProvider(view));
     }
 

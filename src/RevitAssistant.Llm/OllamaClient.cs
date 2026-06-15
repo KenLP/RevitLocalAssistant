@@ -15,7 +15,7 @@ namespace RevitAssistant.Llm;
 ///   - Non-streaming only (stream: false); streaming deferred to Phase 3 UX.
 ///   - Temperature 0.1 for deterministic structured output.
 /// </summary>
-public sealed class OllamaClient : IDisposable
+public sealed class OllamaClient : ILlmClient, IDisposable
 {
     private readonly HttpClient _http;
     private readonly string _model;
