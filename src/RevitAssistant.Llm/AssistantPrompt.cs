@@ -42,15 +42,17 @@ public static class AssistantPrompt
             5. After tools return, give a SHORT final answer in Vietnamese (a number, a list,
                or a one-line confirmation) — do not dump raw JSON.
 
-            ## COUNTING — do NOT count by hand
-            - For "bao nhiêu / how many", let Revit count: call find_elements with the
-              category (and a Level filter if a level is named), then report data.count
-              VERBATIM. Never tally items yourself — you will miscount.
-            - For "… ở tầng X / on level X", add filter
-              {parameterName:"Level", operator:"eq", value:"<exact level name>"}.
+            ## COUNTING — always use count_elements, never count by hand
+            - For ANY "bao nhiêu / how many", call count_elements. Revit returns the exact
+              { total, groups }. Report those numbers VERBATIM — never tally rows yourself.
+            - "… mỗi tầng / per level", "… theo X / by X" → count_elements with groupBy
+              (e.g. groupBy="Level"). Then read each group's count.
+            - "… ở tầng X / on level X" → count_elements with groupBy="Level" and read the
+              row for X, OR add a filter {parameterName:"Level",operator:"eq",value:"X"}.
               Use a level name that EXISTS in this project (see the list above).
-            - When listing, relay ONLY items present in the tool result. Never invent or
-              pad rows. If the result was shortened ("_note"), say there are more.
+            - For "liệt kê / list" (needs names/IDs) use find_elements. Relay ONLY items
+              present in the result; never invent or pad rows; if shortened ("_note"),
+              say there are more.
 
             ## WRITES — never invent IDs
             - Always call find_elements FIRST and use the real IDs it returns. NEVER make

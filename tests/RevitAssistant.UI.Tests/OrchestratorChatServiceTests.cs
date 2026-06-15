@@ -77,6 +77,43 @@ public sealed class OrchestratorChatServiceTests
         bridge.Calls.Should().ContainSingle(c => c.Cmd == "find_elements" && !c.DryRun);
     }
 
+    [Fact]
+    public async Task CountElements_GroupBy_AggregatesViaFindElements()
+    {
+        var llm = new FakeLlm(
+            Calls(Echo(), Tc("count_elements", """{"category":"OST_Rooms","groupBy":"Level"}""", "c1")),
+            Text("Tầng L2 có 3 phòng, L1 có 2 phòng."));
+        var bridge = new FakeBridge((cmd, args, _) =>
+        {
+            cmd.Should().Be("find_elements", "count_elements must query via find_elements");
+            // groupBy is projected as a field
+            ((JsonArray)args["fields"]!)[0]!.GetValue<string>().Should().Be("Level");
+            return new JsonObject
+            {
+                ["ok"] = true,
+                ["data"] = new JsonObject
+                {
+                    ["count"] = 5,
+                    ["elements"] = new JsonArray
+                    {
+                        new JsonObject { ["id"] = 1, ["fields"] = new JsonObject { ["Level_display"] = "L1" } },
+                        new JsonObject { ["id"] = 2, ["fields"] = new JsonObject { ["Level_display"] = "L1" } },
+                        new JsonObject { ["id"] = 3, ["fields"] = new JsonObject { ["Level_display"] = "L2" } },
+                        new JsonObject { ["id"] = 4, ["fields"] = new JsonObject { ["Level_display"] = "L2" } },
+                        new JsonObject { ["id"] = 5, ["fields"] = new JsonObject { ["Level_display"] = "L2" } },
+                    },
+                },
+            };
+        });
+
+        var svc = Make(llm, bridge);
+        var turn = await svc.SendAsync("bao nhiêu phòng mỗi tầng");
+
+        turn.Pending.Should().BeNull();
+        turn.Replies.Should().Contain(r => r.Text.Contains("L2"));
+        bridge.Calls.Should().ContainSingle(c => c.Cmd == "find_elements" && !c.DryRun);
+    }
+
     // ── Write flow ───────────────────────────────────────────────────────────
 
     [Fact]

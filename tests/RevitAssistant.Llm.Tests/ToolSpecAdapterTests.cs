@@ -27,6 +27,7 @@ public sealed class ToolSpecAdapterTests
     [InlineData("list_sheets")]
     [InlineData("list_elements")]
     [InlineData("find_elements")]
+    [InlineData("count_elements")]
     [InlineData("get_element_info")]
     [InlineData("get_parameter")]
     [InlineData("get_selected_elements")]

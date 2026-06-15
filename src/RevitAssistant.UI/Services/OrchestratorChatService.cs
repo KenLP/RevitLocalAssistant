@@ -175,6 +175,15 @@ public sealed class OrchestratorChatService : IChatService
                     return new ChatTurn(replies);
                 }
 
+                if (tc.FunctionName == "count_elements")
+                {
+                    // Virtual tool handled here: query via find_elements, then count /
+                    // group deterministically in C# so the model never miscounts.
+                    var counted = await CountElementsAsync(tc, ct).ConfigureAwait(false);
+                    AppendToolResult(tc, counted);
+                    continue;
+                }
+
                 if (WriteTools.Contains(tc.FunctionName))
                 {
                     var dry = await ExecuteAsync(tc, dryRun: true, ct).ConfigureAwait(false);
@@ -216,6 +225,36 @@ public sealed class OrchestratorChatService : IChatService
         for (var j = from; j < calls.Count; j++)
             AppendToolResult(calls[j],
                 JsonResultError("deferred", "Sẽ xử lý sau khi thao tác trước được giải quyết."));
+    }
+
+    /// <summary>
+    /// count_elements: run find_elements (high limit, projecting the groupBy field)
+    /// then aggregate the rows in C#. Returns an exact { total, groups } summary.
+    /// </summary>
+    private async Task<JsonObject> CountElementsAsync(ToolCall tc, CancellationToken ct)
+    {
+        JsonObject args;
+        try { args = tc.ParseArguments(); }
+        catch (Exception ex) { return JsonResultError("bad_arguments", ex.Message); }
+
+        var category = args["category"]?.GetValue<string>();
+        if (string.IsNullOrWhiteSpace(category))
+            return JsonResultError("bad_request", "count_elements cần 'category'.");
+
+        var groupBy = args["groupBy"]?.GetValue<string>();
+
+        var findParams = new JsonObject
+        {
+            ["category"] = category,
+            ["limit"] = 5000,
+        };
+        if ((args["filters"] as JsonArray)?.DeepClone() is JsonArray filters)
+            findParams["filters"] = filters;
+        if (!string.IsNullOrWhiteSpace(groupBy))
+            findParams["fields"] = new JsonArray { groupBy };
+
+        var env = await _revit.CallAsync("find_elements", findParams, false, ct).ConfigureAwait(false);
+        return Aggregator.Summarize(env, groupBy);
     }
 
     private Task<JsonObject> ExecuteAsync(ToolCall tc, bool dryRun, CancellationToken ct)

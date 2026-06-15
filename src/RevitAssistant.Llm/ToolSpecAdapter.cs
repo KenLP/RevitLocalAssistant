@@ -120,10 +120,49 @@ public static class ToolSpecAdapter
                 """)),
 
             new ToolDefinition(
+                "count_elements",
+                "Count elements EXACTLY (Revit does the counting — you never miscount). " +
+                "USE THIS for any 'bao nhiêu / how many' question. " +
+                "Optionally group by a parameter to get a per-group breakdown: " +
+                "'bao nhiêu phòng mỗi tầng' → category=OST_Rooms, groupBy='Level'. " +
+                "Optionally filter: 'bao nhiêu cửa có Fire Rating < 60' → filters. " +
+                "Returns { total, groups:[{value,count}] }. Report these numbers verbatim.",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "category": {
+                      "type": "string",
+                      "description": "BuiltInCategory name (required), e.g. OST_Rooms, OST_Doors, OST_Walls."
+                    },
+                    "groupBy": {
+                      "type": "string",
+                      "description": "Optional parameter name to break the count down by, e.g. 'Level', 'Fire Rating', 'Department'."
+                    },
+                    "filters": {
+                      "type": "array",
+                      "description": "Optional filters (AND). Same shape as find_elements.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "parameterName": { "type": "string" },
+                          "operator": { "type": "string", "enum": ["eq","neq","contains","gt","lt","gte","lte"] },
+                          "value": { }
+                        },
+                        "required": ["parameterName", "value"]
+                      }
+                    }
+                  },
+                  "required": ["category"]
+                }
+                """)),
+
+            new ToolDefinition(
                 "find_elements",
-                "Query elements by category + parameter filters. Returns id, name, type, and requested fields. " +
-                "Dùng khi cần lọc cấu kiện theo điều kiện: " +
-                "'tìm tất cả [cấu kiện] có [tham số] [toán tử] [giá trị]'. " +
+                "List elements by category + parameter filters. Returns id, name, type, and requested fields. " +
+                "Dùng khi cần DANH SÁCH/ID cấu kiện theo điều kiện: " +
+                "'liệt kê / tìm tất cả [cấu kiện] có [tham số] [toán tử] [giá trị]'. " +
+                "For 'how many' use count_elements instead. " +
                 "IMPORTANT: call this BEFORE set_parameter_batch to discover element IDs.",
                 Schema("""
                 {
