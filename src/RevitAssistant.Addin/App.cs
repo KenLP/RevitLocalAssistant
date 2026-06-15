@@ -81,8 +81,10 @@ public sealed class App : IExternalApplication
                       ?? "http://localhost:11434";
         var model = Environment.GetEnvironmentVariable("REVIT_ASSISTANT_MODEL")
                     ?? "qwen2.5:7b-instruct";
+        var numCtx = int.TryParse(
+            Environment.GetEnvironmentVariable("REVIT_ASSISTANT_NUM_CTX"), out var n) ? n : 8192;
 
-        var llm = new OllamaClient(baseUrl, model);
+        var llm = new OllamaClient(baseUrl, model, numCtx);
         var bridge = new RevitBridge();
         var chat = new OrchestratorChatService(llm, bridge);
 

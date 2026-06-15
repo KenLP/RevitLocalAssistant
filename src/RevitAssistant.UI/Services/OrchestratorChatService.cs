@@ -194,7 +194,8 @@ public sealed class OrchestratorChatService : IChatService
     }
 
     private void AppendToolResult(ToolCall tc, JsonObject result) =>
-        _conversation.Add(ChatMessage.ToolResult(tc.Id, result.ToJsonString()));
+        // Trim large arrays so a big query result can't truncate the system prompt.
+        _conversation.Add(ChatMessage.ToolResult(tc.Id, ResultTrimmer.Trim(result).ToJsonString()));
 
     // ── Parsing helpers ──────────────────────────────────────────────────────
 
