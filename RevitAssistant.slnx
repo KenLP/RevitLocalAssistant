@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RevitAssistant.Addin/RevitAssistant.Addin.csproj" />
+    <Project Path="src/RevitAssistant.Compliance/RevitAssistant.Compliance.csproj" />
+    <Project Path="src/RevitAssistant.Core/RevitAssistant.Core.csproj" />
+    <Project Path="src/RevitAssistant.Llm/RevitAssistant.Llm.csproj" />
+    <Project Path="src/RevitAssistant.Schema/RevitAssistant.Schema.csproj" />
+    <Project Path="src/RevitAssistant.UI/RevitAssistant.UI.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RevitAssistant.Compliance.Tests/RevitAssistant.Compliance.Tests.csproj" />
+    <Project Path="tests/RevitAssistant.Llm.Tests/RevitAssistant.Llm.Tests.csproj" />
+  </Folder>
+</Solution>

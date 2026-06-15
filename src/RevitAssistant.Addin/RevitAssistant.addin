@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>Revit Local Assistant</Name>
+    <Assembly>RevitAssistant.dll</Assembly>
+    <FullClassName>RevitAssistant.App</FullClassName>
+    <!--
+      ClientId MUST differ from RevitMCPAddin (9C4D2B7E-...).
+      Both addins can be installed side-by-side:
+        RevitMCPAddin  = MCP/Claude Desktop online mode (port 7891)
+        RevitAssistant = local Ollama offline mode (in-process)
+    -->
+    <ClientId>F3A1E2D5-B4C7-4E8A-9B2F-6D1C3E5A7B0F</ClientId>
+    <VendorId>LEPHU</VendorId>
+    <VendorDescription>Le Phu — Revit Local Assistant (offline AI, VI/EN)</VendorDescription>
+  </AddIn>
+</RevitAddIns>

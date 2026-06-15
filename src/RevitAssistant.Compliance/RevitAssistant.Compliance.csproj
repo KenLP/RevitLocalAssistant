@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>RevitAssistant.Compliance</AssemblyName>
+    <RootNamespace>RevitAssistant.Compliance</RootNamespace>
+    <TargetFramework>$(RevitTargetFramework)</TargetFramework>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RevitAssistant.Core\RevitAssistant.Core.csproj" />
+    <ProjectReference Include="..\RevitAssistant.Llm\RevitAssistant.Llm.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Rule files (.yaml) shipped alongside the DLL -->
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+
+  <!-- Copy bundled compliance rule packs to output -->
+  <ItemGroup>
+    <None Update="Rules\**\*.yaml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

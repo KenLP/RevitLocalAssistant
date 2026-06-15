@@ -1,0 +1,23 @@
+# Normalize line endings to CRLF on checkout (Windows / Revit dev)
+* text=auto eol=crlf
+
+# Binary files — never diff, never CRLF-convert
+*.dll binary
+*.exe binary
+*.pdb binary
+*.png binary
+*.ico binary
+*.bmp binary
+*.gif binary
+
+# Always treat as text
+*.cs text diff=csharp
+*.csproj text
+*.sln text
+*.props text
+*.targets text
+*.addin text
+*.yml text
+*.yaml text
+*.json text
+*.md text

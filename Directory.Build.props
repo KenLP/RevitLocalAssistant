@@ -1,0 +1,29 @@
+<Project>
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <!-- Suppress harmless .NET ref-assembly vs Revit DLL version conflict -->
+    <NoWarn>$(NoWarn);MSB3277</NoWarn>
+
+    <!--
+      Target Revit version.  Override on the command line:
+        dotnet build -p:RevitVersion=2025
+        dotnet build -p:RevitVersion=2027
+    -->
+    <RevitVersion Condition="'$(RevitVersion)' == ''">2026</RevitVersion>
+    <RevitInstallDir Condition="'$(RevitInstallDir)' == ''">C:\Program Files\Autodesk\Revit $(RevitVersion)</RevitInstallDir>
+    <RevitAddinFolder>$(APPDATA)\Autodesk\Revit\Addins\$(RevitVersion)</RevitAddinFolder>
+
+    <!--
+      TFM helper properties — individual Revit-dependent projects reference these
+      to set their own <TargetFramework>.  Test/pure-logic projects set their own TFM.
+        R25 / R26  →  net8.0-windows
+        R27+       →  net10.0-windows
+    -->
+    <RevitTargetFramework Condition="$([MSBuild]::VersionGreaterThanOrEquals($(RevitVersion), 2027))">net10.0-windows</RevitTargetFramework>
+    <RevitTargetFramework Condition="$([MSBuild]::VersionLessThan($(RevitVersion), 2027))">net8.0-windows</RevitTargetFramework>
+  </PropertyGroup>
+</Project>

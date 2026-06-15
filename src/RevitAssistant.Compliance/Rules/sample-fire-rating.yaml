@@ -1,0 +1,27 @@
+# Sample compliance rule pack — Fire Rating
+# Format documented in docs/COMPLIANCE_RULES.md
+# Phase 6: full rule engine implementation
+
+- id: FR-001
+  description_vi: "Cửa thoát hiểm phải có cấp chống cháy tối thiểu 60 phút"
+  description_en: "Exit doors must have a minimum 60-minute fire rating"
+  category: OST_Doors
+  scope_filter: "Comments contains 'thoát hiểm' OR FamilyName contains 'Exit'"
+  assertion: "Fire Rating >= 60"
+  severity: error
+
+- id: FR-002
+  description_vi: "Tường ngăn cháy phải có cấp chống cháy tối thiểu 120 phút"
+  description_en: "Fire-rated walls must have a minimum 120-minute fire rating"
+  category: OST_Walls
+  scope_filter: "Comments contains 'ngăn cháy' OR Type Name contains 'FRW'"
+  assertion: "Fire Rating >= 120"
+  severity: error
+
+- id: ROOM-001
+  description_vi: "Mỗi phòng phải có tên và phân khu"
+  description_en: "Every room must have a Name and Department"
+  category: OST_Rooms
+  scope_filter: null
+  assertion: "Name is not empty AND Department is not empty"
+  severity: warning

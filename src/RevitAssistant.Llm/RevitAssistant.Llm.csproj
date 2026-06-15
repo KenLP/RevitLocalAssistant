@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>RevitAssistant.Llm</AssemblyName>
+    <RootNamespace>RevitAssistant.Llm</RootNamespace>
+    <!--
+      No Revit API dependency — pure HTTP to Ollama.
+      Stays net8.0-windows for consistency with the rest of the addin stack
+      (always built on Windows), but has no WinAPI calls.
+    -->
+    <TargetFramework>$(RevitTargetFramework)</TargetFramework>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+
+</Project>

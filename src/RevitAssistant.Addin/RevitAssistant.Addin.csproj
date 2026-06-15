@@ -1,0 +1,77 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AssemblyName>RevitAssistant</AssemblyName>
+    <RootNamespace>RevitAssistant</RootNamespace>
+    <TargetFramework>$(RevitTargetFramework)</TargetFramework>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RevitAssistant.Core\RevitAssistant.Core.csproj" />
+    <ProjectReference Include="..\RevitAssistant.UI\RevitAssistant.UI.csproj" />
+    <ProjectReference Include="..\RevitAssistant.Llm\RevitAssistant.Llm.csproj" />
+    <ProjectReference Include="..\RevitAssistant.Compliance\RevitAssistant.Compliance.csproj" />
+    <ProjectReference Include="..\RevitAssistant.Schema\RevitAssistant.Schema.csproj" />
+  </ItemGroup>
+
+  <!-- On dev machines use real Revit DLLs -->
+  <ItemGroup Condition="Exists('$(RevitInstallDir)\RevitAPI.dll')">
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitInstallDir)\RevitAPI.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitInstallDir)\RevitAPIUI.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(RevitInstallDir)\RevitAPI.dll') And '$(RevitVersion)' == '2025'">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2025.2.0">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2025.2.0">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(RevitInstallDir)\RevitAPI.dll') And '$(RevitVersion)' == '2026'">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2026.4.10">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2026.4.10">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(RevitInstallDir)\RevitAPI.dll') And '$(RevitVersion)' == '2027'">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2027.0.20">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2027.0.20">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!--
+    After build: copy all DLLs + manifest to the per-user Revit Addins folder.
+    Disable with: dotnet build -p:DeployToRevit=false  (CI always passes this)
+  -->
+  <Target Name="DeployToRevitAddinsFolder" AfterTargets="Build"
+          Condition="'$(DeployToRevit)' != 'false'">
+    <MakeDir Directories="$(RevitAddinFolder)" />
+    <ItemGroup>
+      <_DeployFiles Include="$(TargetDir)*.dll" />
+      <_DeployFiles Include="$(TargetDir)*.pdb" />
+      <_DeployFiles Include="$(MSBuildProjectDirectory)\RevitAssistant.addin" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_DeployFiles)"
+          DestinationFolder="$(RevitAddinFolder)"
+          SkipUnchangedFiles="true" />
+    <Message Importance="high" Text="[RevitAssistant] Deployed to $(RevitAddinFolder)" />
+  </Target>
+
+</Project>

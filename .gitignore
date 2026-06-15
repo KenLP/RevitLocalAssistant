@@ -1,0 +1,50 @@
+## .NET / MSBuild
+obj/
+bin/
+*.user
+*.suo
+.vs/
+*.userprefs
+*.ncrunchproject
+
+## Revit token file (generated at runtime, never commit)
+revit-mcp-token.txt
+revit-assistant-token.txt
+
+## Build outputs
+*.dll
+*.exe
+*.pdb
+!installer/**/*.exe
+
+## NuGet
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+
+## Test results
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+## Rider / VS Code
+.idea/
+.vscode/
+*.DotSettings.user
+
+## Logs
+*.log
+
+## OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+## Claude
+.claude/memory/
+
+## Inno Setup temp
+installer/Output/
+installer/inno/*.iss.bak
