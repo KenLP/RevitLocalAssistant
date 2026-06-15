@@ -74,8 +74,15 @@ public sealed class App : IExternalApplication
     private static void RegisterChatPane(UIControlledApplication application)
     {
         // Phase 4: real orchestrator — local Ollama + Revit dispatcher bridge.
-        // Defaults: http://localhost:11434, model qwen2.5:7b-instruct.
-        var llm = new OllamaClient();
+        // Overridable without rebuild (also used by the Phase 7 installer):
+        //   REVIT_ASSISTANT_OLLAMA_URL  (default http://localhost:11434)
+        //   REVIT_ASSISTANT_MODEL       (default qwen2.5:7b-instruct)
+        var baseUrl = Environment.GetEnvironmentVariable("REVIT_ASSISTANT_OLLAMA_URL")
+                      ?? "http://localhost:11434";
+        var model = Environment.GetEnvironmentVariable("REVIT_ASSISTANT_MODEL")
+                    ?? "qwen2.5:7b-instruct";
+
+        var llm = new OllamaClient(baseUrl, model);
         var bridge = new RevitBridge();
         var chat = new OrchestratorChatService(llm, bridge);
 
