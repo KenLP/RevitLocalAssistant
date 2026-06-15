@@ -1,56 +1,31 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <!--
+    Thin wrapper project.  In Phase 0 this contained CorePlaceholder.cs.
+    Phase 1+: wraps the RevitMCP.Core classlib from the git submodule so
+    all consuming projects (Addin, Schema, Compliance, UI) keep their existing
+    <ProjectReference> paths unchanged.
+
+    Submodule path: extern/RevitMCPCore  (branch: feat/extract-revit-mcp-core)
+    To update to a newer commit:
+      cd extern/RevitMCPCore && git pull && cd ../.. && git add extern/RevitMCPCore
+
+    CI note: the submodule url in .gitmodules is currently a local filesystem path.
+    Before pushing to GitHub / enabling CI, update it to the GitHub remote URL:
+      git config -f .gitmodules submodule.extern/RevitMCPCore.url https://github.com/KenLP/RevitMCPServer
+      git submodule sync
+  -->
+
   <PropertyGroup>
     <AssemblyName>RevitAssistant.Core</AssemblyName>
-    <!--
-      Namespace matches the upstream RevitMCPAddin.Commands so consuming code
-      (App.cs, Schema, Compliance) needs no using-changes when the submodule
-      replaces this placeholder.
-    -->
     <RootNamespace>RevitMCPAddin</RootNamespace>
     <TargetFramework>$(RevitTargetFramework)</TargetFramework>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
-  <!-- On dev machines use real Revit DLLs -->
-  <ItemGroup Condition="Exists('$(RevitInstallDir)\RevitAPI.dll')">
-    <Reference Include="RevitAPI">
-      <HintPath>$(RevitInstallDir)\RevitAPI.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-    <Reference Include="RevitAPIUI">
-      <HintPath>$(RevitInstallDir)\RevitAPIUI.dll</HintPath>
-      <Private>False</Private>
-    </Reference>
-  </ItemGroup>
-
-  <!-- CI fallback: Nice3point reference assemblies -->
-  <ItemGroup Condition="!Exists('$(RevitInstallDir)\RevitAPI.dll') And '$(RevitVersion)' == '2025'">
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2025.2.0">
-      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2025.2.0">
-      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup Condition="!Exists('$(RevitInstallDir)\RevitAPI.dll') And '$(RevitVersion)' == '2026'">
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2026.4.10">
-      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2026.4.10">
-      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup Condition="!Exists('$(RevitInstallDir)\RevitAPI.dll') And '$(RevitVersion)' == '2027'">
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2027.0.20">
-      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2027.0.20">
-      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
-    </PackageReference>
+  <ItemGroup>
+    <ProjectReference Include="..\..\extern\RevitMCPCore\src\RevitMCP.Core\RevitMCP.Core.csproj" />
   </ItemGroup>
 
 </Project>

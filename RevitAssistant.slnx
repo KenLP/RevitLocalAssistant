@@ -1,4 +1,9 @@
 <Solution>
+  <Folder Name="/extern/">
+    <Project Path="extern/RevitMCPCore/src/RevitMCP.Core/RevitMCP.Core.csproj">
+      <Platform Project="x64" />
+    </Project>
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/RevitAssistant.Addin/RevitAssistant.Addin.csproj" />
     <Project Path="src/RevitAssistant.Compliance/RevitAssistant.Compliance.csproj" />

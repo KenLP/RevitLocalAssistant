@@ -3,7 +3,10 @@
 > **Dành cho session đang xử lý RevitMCPServer.**
 > Đây là hướng dẫn chi tiết để tách `RevitMCP.Core` classlib từ repo hiện tại.
 > Không cần hiểu repo RevitAssistant — chỉ cần làm đúng các bước dưới đây trong repo RevitMCPServer.
+> BỔ SUNG BẮT BUỘC — Deploy target phải copy cả RevitMCP.Core.dll
+> Lý do: sau khi tách Core thành classlib riêng, output build có 2 DLL (RevitMCPAddin.dll + RevitMCP.Core.dll). Target DeployToRevitAddinsFolder hiện chỉ copy $(AssemblyName).dll, chưa copy Core.dll. Nếu quên, Revit load addin fail (FileNotFoundException: RevitMCP.Core) → addin không serve HTTP → consumer (bim-orchestrator HTTP-direct) nhận ConnectError: All connection attempts failed.
 
+> Brief dùng -p:DeployToRevit=false cho build/test nên gap này KHÔNG lộ ra lúc dev — chỉ chết ở deploy thật. Phải fix target + verify deploy thật.
 ---
 
 ## Mục tiêu
@@ -161,6 +164,46 @@ Mở `src/RevitAddin/RevitMCPAddin.csproj`, thêm ProjectReference vào Core:
 
 Không cần xóa gì — Revit API references giữ nguyên (App.cs và McpHttpServer.cs vẫn cần).
 
+#### ⚠️ BẮT BUỘC — Deploy target phải copy cả `RevitMCP.Core.dll`
+
+> Sau khi tách Core, output build có **2 DLL** (`RevitMCPAddin.dll` + `RevitMCP.Core.dll`).
+> Target `DeployToRevitAddinsFolder` hiện chỉ copy `$(AssemblyName).dll`, **chưa copy Core.dll**.
+> Nếu quên: Revit load addin fail (`FileNotFoundException: RevitMCP.Core`) → addin không
+> serve HTTP → consumer (bim-orchestrator HTTP-direct) nhận `ConnectError: All connection
+> attempts failed`. Build/test ở Bước 7 dùng `-p:DeployToRevit=false` nên gap này **KHÔNG
+> lộ ra lúc dev** — chỉ chết ở deploy thật.
+
+Sửa target `DeployToRevitAddinsFolder` trong `src/RevitAddin/RevitMCPAddin.csproj`, thêm
+2 dòng `<Copy>` cho Core (ProjectReference + `CopyLocalLockFileAssemblies=true` đã đảm bảo
+Core.dll/.pdb nằm sẵn trong `$(TargetDir)`):
+
+```xml
+<Target Name="DeployToRevitAddinsFolder" AfterTargets="Build"
+        Condition="'$(DeployToRevit)' != 'false'">
+  <MakeDir Directories="$(RevitAddinFolder)" />
+  <Copy SourceFiles="$(TargetDir)$(AssemblyName).dll"
+        DestinationFolder="$(RevitAddinFolder)" />
+  <!-- NEW: ship the extracted Core classlib alongside the addin -->
+  <Copy SourceFiles="$(TargetDir)RevitMCP.Core.dll"
+        DestinationFolder="$(RevitAddinFolder)" />
+  <Copy SourceFiles="$(TargetDir)RevitMCP.Core.pdb"
+        DestinationFolder="$(RevitAddinFolder)"
+        Condition="Exists('$(TargetDir)RevitMCP.Core.pdb')" />
+  <Copy SourceFiles="$(TargetDir)$(AssemblyName).pdb"
+        DestinationFolder="$(RevitAddinFolder)"
+        Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" />
+  <Copy SourceFiles="$(MSBuildProjectDirectory)\RevitMCPAddin.addin"
+        DestinationFolder="$(RevitAddinFolder)" />
+  <Message Importance="high"
+           Text="Deployed RevitMCPAddin (+ RevitMCP.Core) to $(RevitAddinFolder)" />
+</Target>
+```
+
+> Phương án thay thế robust hơn (nếu sau này còn tách thêm classlib): đổi 2 dòng addin/core
+> thành 1 glob `$(TargetDir)*.dll`. An toàn vì RevitAPI/RevitAPIUI là `<Private>False</Private>`
+> và Nice3point là `IncludeAssets=compile` → cả hai KHÔNG nằm trong `$(TargetDir)`, nên glob
+> chỉ bắt 2 DLL của mình.
+
 ### Bước 5 — Update InternalsVisibleTo
 
 Trong file `src/RevitAddin/Server/McpHttpServer.cs`, dòng đầu có:
@@ -187,6 +230,30 @@ dotnet test -p:RevitVersion=2026 -p:DeployToRevit=false
 - `CS0246 type not found` → check xem file đã được move đúng chưa
 - `CS0234 namespace not found` → check `RootNamespace` trong Core.csproj có đúng là `RevitMCPAddin` không
 - Missing `using` → thêm `using RevitMCPAddin.Commands;` vào file cần
+
+#### Verify deploy THẬT (ngoài build/test `DeployToRevit=false`)
+
+Build/test ở trên dùng `-p:DeployToRevit=false` nên KHÔNG kiểm được deploy-copy. Phải chạy
+deploy thật một lần để xác nhận cả 2 DLL được copy:
+
+```bash
+# Deploy thật (KHÔNG có -p:DeployToRevit=false) cho version đang chạy
+dotnet build -c Release -p:RevitVersion=2027
+
+# Xác nhận CẢ HAI DLL đã nằm trong Addins folder
+dir "%APPDATA%\Autodesk\Revit\Addins\2027\RevitMCP*.dll"
+#   → phải thấy RevitMCPAddin.dll  VÀ  RevitMCP.Core.dll
+```
+
+Sau đó **restart Revit** → kiểm tra addin serve được:
+```
+GET http://127.0.0.1:7892/health   → { ok: true, ... }
+```
+Nếu `/health` fail dù đã thấy đủ 2 DLL → xem Revit journal log để biết addin load lỗi gì.
+
+> Wire protocol (command names, params, response envelope, port, auth, `.addin` manifest)
+> **giữ nguyên 100%** vì namespace `RevitMCPAddin.Commands` không đổi và `McpHttpServer.cs`
+> không di chuyển. Consumer bim-orchestrator (MultiAIagents) **không cần đổi code**.
 
 ### Bước 8 — Commit
 
