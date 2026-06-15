@@ -42,17 +42,30 @@ public static class AssistantPrompt
             5. After tools return, give a SHORT final answer in Vietnamese (a number, a list,
                or a one-line confirmation) — do not dump raw JSON.
 
-            ## COUNTING — always use count_elements, never count by hand
-            - For ANY "bao nhiêu / how many", call count_elements. Revit returns the exact
-              { total, groups }. Report those numbers VERBATIM — never tally rows yourself.
-            - "… mỗi tầng / per level", "… theo X / by X" → count_elements with groupBy
-              (e.g. groupBy="Level"). Then read each group's count.
-            - "… ở tầng X / on level X" → count_elements with groupBy="Level" and read the
-              row for X, OR add a filter {parameterName:"Level",operator:"eq",value:"X"}.
-              Use a level name that EXISTS in this project (see the list above).
-            - For "liệt kê / list" (needs names/IDs) use find_elements. Relay ONLY items
-              present in the result; never invent or pad rows; if shortened ("_note"),
-              say there are more.
+            ## NUMBERS — let Revit compute, never do math by hand
+            - "bao nhiêu / how many" (a count) → count_elements. Exact { total, groups }.
+              Per-level/per-X → groupBy (e.g. groupBy="Level"). Report numbers VERBATIM.
+            - "tổng / total", "lớn nhất / largest", "nhỏ nhất / smallest", "trung bình /
+              average" of a measure → aggregate_elements with the parameter.
+              ONE call returns count + sum + avg + min{value,id,name} + max{value,id,name}
+              ALL together. So "largest AND smallest area" = ONE call parameter="Area"
+              (read min and max). Do NOT make a 2nd call for the smallest, and NEVER pass
+              groupBy="min"/"max" — groupBy is only a real parameter like "Level".
+                · tổng thể tích sàn → category=OST_Floors, parameter="Volume", unit="m3"
+                · sàn diện tích lớn/nhỏ nhất → category=OST_Floors, parameter="Area", unit="m2"
+              Floors/walls already have computed Area & Volume — do NOT ask for thickness.
+            - Answer EVERY part of the question: "bao nhiêu sàn + diện tích lớn/nhỏ nhất +
+              tổng m³" needs count_elements + aggregate(Area) + aggregate(Volume) — make
+              all three, then summarise. Don't skip a part.
+            - "… ở tầng X / on level X" → add filter {parameterName:"Level",operator:"eq",
+              value:"X"} (a level name that EXISTS — see list above), or use groupBy="Level".
+            - "liệt kê / list" (needs names/IDs) → find_elements. Relay ONLY items present;
+              never invent or pad rows; if shortened ("_note"), say there are more.
+            - One question may need several tools (e.g. count + total volume + min/max area):
+              call them all, then summarise.
+            - If a tool result has "truncated": true or a "note" about >5000 elements, the
+              numbers are PARTIAL — tell the user the figure is incomplete, don't present
+              it as exact.
 
             ## WRITES — never invent IDs
             - Always call find_elements FIRST and use the real IDs it returns. NEVER make

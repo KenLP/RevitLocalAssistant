@@ -158,6 +158,60 @@ public static class ToolSpecAdapter
                 """)),
 
             new ToolDefinition(
+                "aggregate_elements",
+                "Compute EXACT numeric stats of a parameter over a category (sum, min, max, avg) — " +
+                "Revit does the math, you never add up rows by hand. " +
+                "USE THIS for 'tổng/total', 'lớn nhất/largest', 'nhỏ nhất/smallest', 'trung bình/average'. " +
+                "Examples: tổng m³ sàn → category=OST_Floors, parameter='Volume', unit='m3'; " +
+                "sàn diện tích lớn nhất/nhỏ nhất → parameter='Area', unit='m2' (min & max are returned). " +
+                "Floors and walls have a computed 'Volume' and 'Area' — totalling volume needs NO thickness. " +
+                "Returns { count, sum, avg, min:{value,id,name}, max:{value,id,name} }. Report verbatim.",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "category": {
+                      "type": "string",
+                      "description": "BuiltInCategory (required), e.g. OST_Floors, OST_Walls, OST_Rooms."
+                    },
+                    "parameter": {
+                      "type": "string",
+                      "description": "Numeric parameter to aggregate (required), e.g. 'Area', 'Volume', 'Length'."
+                    },
+                    "unit": {
+                      "type": "string",
+                      "enum": ["m2", "m3", "meters", "internal"],
+                      "description": "Output unit. Use m2 for Area, m3 for Volume, meters for lengths. If omitted it is inferred from the parameter name."
+                    },
+                    "groupBy": {
+                      "type": "string",
+                      "description": "Optional parameter to break stats down by, e.g. 'Level'."
+                    },
+                    "top": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 40,
+                      "description": "Optional: also return the top-N (max 40) elements by value, largest first."
+                    },
+                    "filters": {
+                      "type": "array",
+                      "description": "Optional filters (AND), same shape as find_elements.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "parameterName": { "type": "string" },
+                          "operator": { "type": "string", "enum": ["eq","neq","contains","gt","lt","gte","lte"] },
+                          "value": { }
+                        },
+                        "required": ["parameterName", "value"]
+                      }
+                    }
+                  },
+                  "required": ["category", "parameter"]
+                }
+                """)),
+
+            new ToolDefinition(
                 "find_elements",
                 "List elements by category + parameter filters. Returns id, name, type, and requested fields. " +
                 "Dùng khi cần DANH SÁCH/ID cấu kiện theo điều kiện: " +

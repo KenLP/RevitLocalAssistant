@@ -184,6 +184,13 @@ public sealed class OrchestratorChatService : IChatService
                     continue;
                 }
 
+                if (tc.FunctionName == "aggregate_elements")
+                {
+                    var agg = await AggregateElementsAsync(tc, ct).ConfigureAwait(false);
+                    AppendToolResult(tc, agg);
+                    continue;
+                }
+
                 if (WriteTools.Contains(tc.FunctionName))
                 {
                     var dry = await ExecuteAsync(tc, dryRun: true, ct).ConfigureAwait(false);
@@ -255,6 +262,57 @@ public sealed class OrchestratorChatService : IChatService
 
         var env = await _revit.CallAsync("find_elements", findParams, false, ct).ConfigureAwait(false);
         return Aggregator.Summarize(env, groupBy);
+    }
+
+    /// <summary>
+    /// aggregate_elements: sum/min/max/avg of a numeric parameter (e.g. Area,
+    /// Volume) computed in C#, with unit conversion (ft²→m², ft³→m³) and optional
+    /// top-N / group-by. Floors &amp; walls expose computed Area/Volume, so totals
+    /// need no thickness.
+    /// </summary>
+    private async Task<JsonObject> AggregateElementsAsync(ToolCall tc, CancellationToken ct)
+    {
+        JsonObject args;
+        try { args = tc.ParseArguments(); }
+        catch (Exception ex) { return JsonResultError("bad_arguments", ex.Message); }
+
+        var category = args["category"]?.GetValue<string>();
+        if (string.IsNullOrWhiteSpace(category))
+            return JsonResultError("bad_request", "aggregate_elements cần 'category'.");
+
+        var parameter = args["parameter"]?.GetValue<string>();
+        if (string.IsNullOrWhiteSpace(parameter))
+            return JsonResultError("bad_request", "aggregate_elements cần 'parameter' (vd 'Area', 'Volume').");
+
+        var groupBy = args["groupBy"]?.GetValue<string>();
+        var unit = args["unit"]?.GetValue<string>();
+        var top = Math.Clamp(TryGetInt(args["top"]) ?? 0, 0, 40);
+        var (factor, label) = Aggregator.ResolveUnit(unit, parameter!);
+
+        var fields = new JsonArray { parameter };
+        if (!string.IsNullOrWhiteSpace(groupBy) &&
+            !string.Equals(groupBy, parameter, StringComparison.OrdinalIgnoreCase))
+            fields.Add(groupBy);
+
+        var findParams = new JsonObject
+        {
+            ["category"] = category,
+            ["limit"] = 5000,
+            ["fields"] = fields,
+        };
+        if ((args["filters"] as JsonArray)?.DeepClone() is JsonArray filters)
+            findParams["filters"] = filters;
+
+        var env = await _revit.CallAsync("find_elements", findParams, false, ct).ConfigureAwait(false);
+        return Aggregator.SummarizeNumeric(env, parameter!, factor, label, top, groupBy);
+    }
+
+    private static int? TryGetInt(JsonNode? n)
+    {
+        if (n is null) return null;
+        try { return n.GetValue<int>(); } catch { }
+        try { return (int)n.GetValue<long>(); } catch { }
+        return null;
     }
 
     private Task<JsonObject> ExecuteAsync(ToolCall tc, bool dryRun, CancellationToken ct)

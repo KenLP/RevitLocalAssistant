@@ -114,6 +114,40 @@ public sealed class OrchestratorChatServiceTests
         bridge.Calls.Should().ContainSingle(c => c.Cmd == "find_elements" && !c.DryRun);
     }
 
+    [Fact]
+    public async Task AggregateElements_SumsViaFindElements_WithUnitConversion()
+    {
+        var llm = new FakeLlm(
+            Calls(Echo(), Tc("aggregate_elements",
+                """{"category":"OST_Floors","parameter":"Volume","unit":"m3"}""", "a1")),
+            Text("Tổng thể tích sàn ≈ 5.663 m³."));
+        var bridge = new FakeBridge((cmd, args, _) =>
+        {
+            cmd.Should().Be("find_elements");
+            ((JsonArray)args["fields"]!)[0]!.GetValue<string>().Should().Be("Volume");
+            return new JsonObject
+            {
+                ["ok"] = true,
+                ["data"] = new JsonObject
+                {
+                    ["count"] = 2,
+                    ["elements"] = new JsonArray
+                    {
+                        new JsonObject { ["id"] = 1, ["name"] = "F1", ["fields"] = new JsonObject { ["Volume"] = 100.0 } },
+                        new JsonObject { ["id"] = 2, ["name"] = "F2", ["fields"] = new JsonObject { ["Volume"] = 100.0 } },
+                    },
+                },
+            };
+        });
+
+        var svc = Make(llm, bridge);
+        var turn = await svc.SendAsync("tổng m3 sàn");
+
+        turn.Pending.Should().BeNull();
+        bridge.Calls.Should().ContainSingle(c => c.Cmd == "find_elements" && !c.DryRun);
+        turn.Replies.Should().Contain(r => r.Text.Contains("5.663"));
+    }
+
     // ── Write flow ───────────────────────────────────────────────────────────
 
     [Fact]
