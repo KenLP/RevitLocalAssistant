@@ -62,6 +62,56 @@ public sealed class PreviewBuilderTests
     }
 
     [Fact]
+    public void UpdateWhere_BuildsRowsAndTypeScopeWarning()
+    {
+        var write = Write("update_where",
+            """{"category":"OST_Doors","where":[{"parameter":"Mark","operator":"eq","value":"S10"}],"set":{"parameter":"Fire Rating","value":"90 MIN","scope":"type"}}""");
+        var dry = Envelope(new JsonObject
+        {
+            ["scope"] = "type",
+            ["matchedCount"] = 1,
+            ["applied"] = 1,
+            ["failed"] = 0,
+            ["affectedInstances"] = 6,
+            ["results"] = new JsonArray
+            {
+                new JsonObject { ["id"] = 101, ["name"] = "S10", ["ok"] = true, ["before"] = "60 MIN", ["after"] = "90 MIN" },
+            },
+        });
+
+        var preview = PreviewBuilder.Build(write, dry);
+
+        preview.Title.Should().Be("Sửa tham số (theo điều kiện)");
+        preview.Rows.Should().ContainSingle();
+        preview.Rows[0].Detail.Should().Contain("Fire Rating").And.Contain("90 MIN");
+        preview.Summary.Should().Contain("tham số LOẠI").And.Contain("6");  // collateral warning
+    }
+
+    [Fact]
+    public void UpdateWhere_FailedRow_MarkedFailure()
+    {
+        var write = Write("update_where",
+            """{"category":"OST_Doors","where":[],"set":{"parameter":"Comments","value":"x"}}""");
+        var dry = Envelope(new JsonObject
+        {
+            ["scope"] = "instance",
+            ["matchedCount"] = 2,
+            ["applied"] = 1,
+            ["failed"] = 1,
+            ["affectedInstances"] = 2,
+            ["results"] = new JsonArray
+            {
+                new JsonObject { ["id"] = 1, ["name"] = "a", ["ok"] = true, ["after"] = "x" },
+                new JsonObject { ["id"] = 2, ["name"] = "b", ["ok"] = false, ["reason"] = "read_only" },
+            },
+        });
+
+        var preview = PreviewBuilder.Build(write, dry);
+        preview.FailedCount.Should().Be(1);
+        preview.Rows.Single(r => r.Element.Contains("ID 2")).IsFailure.Should().BeTrue();
+    }
+
+    [Fact]
     public void SetParameter_Single_OneRow()
     {
         var write = Write("set_parameter", """{"id":5,"parameterName":"Mark","value":"A1"}""");

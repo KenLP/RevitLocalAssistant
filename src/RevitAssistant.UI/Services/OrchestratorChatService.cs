@@ -25,7 +25,7 @@ public sealed class OrchestratorChatService : IChatService
     private static readonly HashSet<string> WriteTools =
         new(StringComparer.OrdinalIgnoreCase)
         {
-            "set_parameter", "set_parameter_batch", "rename_element",
+            "update_where", "set_parameter", "set_parameter_batch", "rename_element",
         };
 
     private const int MaxIterations = 6;

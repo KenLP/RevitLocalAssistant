@@ -96,26 +96,79 @@ public static class ToolSpecAdapter
                 "Dùng khi hỏi về bản vẽ / tờ in.",
                 Schema("""{"type":"object","properties":{}}""")),
 
-            // ── Element query ───────────────────────────────────────────────
+            // ── Element query / edit (deterministic, scope-aware) ───────────
             new ToolDefinition(
-                "list_elements",
-                "List elements in a category (name, id, type). Use for a quick overview. " +
-                "Dùng để liệt kê nhanh cấu kiện theo loại danh mục.",
+                "query_where",
+                "PRIMARY tool to find / list / COUNT elements by conditions. Revit does the " +
+                "matching (you never hand-build id lists or count by eye), resolving instance " +
+                "vs TYPE scope automatically — so it can read TYPE params like 'Fire Rating' " +
+                "that instance tools miss. Returns { count, rows:[{id,name,…select}] }. " +
+                "Dùng cho 'bao nhiêu / how many', 'liệt kê / list', 'kiểm tra [phần tử] có [điều kiện]'.",
                 Schema("""
                 {
                   "type": "object",
                   "properties": {
-                    "category": {
-                      "type": "string",
-                      "description": "BuiltInCategory, e.g. 'OST_Walls'. If omitted, lists all elements (slow)."
+                    "category": { "type": "string", "description": "BuiltInCategory (required), e.g. OST_Doors, OST_Walls, OST_Rooms, OST_Floors." },
+                    "where": {
+                      "type": "array",
+                      "description": "AND conditions.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "parameter": { "type": "string", "description": "Exact Revit param name; may contain spaces, e.g. 'Fire Rating' (NOT 'FireRating')." },
+                          "operator": { "type": "string", "enum": ["eq","neq","contains","starts_with","ends_with","regex","not_regex","gt","lt","gte","lte","is_empty","not_empty"] },
+                          "value": { "description": "Value to compare (omit for is_empty/not_empty; .NET regex for regex/not_regex)." },
+                          "scope": { "type": "string", "enum": ["auto","instance","type"], "description": "Where the param lives. Default auto. 'Fire Rating' is a TYPE param." }
+                        },
+                        "required": ["parameter"]
+                      }
                     },
-                    "limit": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 500,
-                      "description": "Max results. Default 100."
-                    }
-                  }
+                    "select": { "type": "array", "items": { "type": "string" }, "description": "Param names to return per row." },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 1000, "description": "Max rows returned; 'count' is always the true total." }
+                  },
+                  "required": ["category"]
+                }
+                """)),
+
+            new ToolDefinition(
+                "update_where",
+                "PRIMARY tool to EDIT a parameter on every element matching conditions. " +
+                "Deterministic with read-back VERIFY (re-reads each write; rolls back all if any " +
+                "fails when atomic). Resolves instance vs TYPE scope and WARNS if a TYPE-param " +
+                "edit hits extra instances. The user confirms before commit. NEVER hand-build id lists. " +
+                "Dùng cho mọi chỉnh sửa: 'đặt/set [tham số]=[giá trị] cho [cấu kiện] có [điều kiện]'.",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "category": { "type": "string", "description": "BuiltInCategory (required)." },
+                    "where": {
+                      "type": "array",
+                      "description": "AND conditions selecting which elements to edit.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "parameter": { "type": "string" },
+                          "operator": { "type": "string", "enum": ["eq","neq","contains","starts_with","ends_with","regex","not_regex","gt","lt","gte","lte","is_empty","not_empty"] },
+                          "value": { },
+                          "scope": { "type": "string", "enum": ["auto","instance","type"] }
+                        },
+                        "required": ["parameter"]
+                      }
+                    },
+                    "set": {
+                      "type": "object",
+                      "properties": {
+                        "parameter": { "type": "string", "description": "Param to write, e.g. 'Comments'." },
+                        "value": { "description": "New value (string / number / true|false)." },
+                        "units": { "type": "string", "enum": ["meters","feet","internal"], "description": "For numeric length/area/volume. Default internal." },
+                        "scope": { "type": "string", "enum": ["auto","instance","type"] }
+                      },
+                      "required": ["parameter", "value"]
+                    },
+                    "atomic": { "type": "boolean", "description": "Roll back ALL if any element fails verify. Default true." }
+                  },
+                  "required": ["category", "set"]
                 }
                 """)),
 
@@ -141,7 +194,7 @@ public static class ToolSpecAdapter
                     },
                     "filters": {
                       "type": "array",
-                      "description": "Optional filters (AND). Same shape as find_elements.",
+                      "description": "Optional filters (AND), instance-scope. For TYPE params (e.g. Fire Rating) use query_where instead.",
                       "items": {
                         "type": "object",
                         "properties": {
@@ -195,7 +248,7 @@ public static class ToolSpecAdapter
                     },
                     "filters": {
                       "type": "array",
-                      "description": "Optional filters (AND), same shape as find_elements.",
+                      "description": "Optional filters (AND), instance-scope. For TYPE params use query_where.",
                       "items": {
                         "type": "object",
                         "properties": {
@@ -208,59 +261,6 @@ public static class ToolSpecAdapter
                     }
                   },
                   "required": ["category", "parameter"]
-                }
-                """)),
-
-            new ToolDefinition(
-                "find_elements",
-                "List elements by category + parameter filters. Returns id, name, type, and requested fields. " +
-                "Dùng khi cần DANH SÁCH/ID cấu kiện theo điều kiện: " +
-                "'liệt kê / tìm tất cả [cấu kiện] có [tham số] [toán tử] [giá trị]'. " +
-                "For 'how many' use count_elements instead. " +
-                "IMPORTANT: call this BEFORE set_parameter_batch to discover element IDs.",
-                Schema("""
-                {
-                  "type": "object",
-                  "properties": {
-                    "category": {
-                      "type": "string",
-                      "description": "BuiltInCategory name (required). Examples: OST_Walls, OST_Doors, OST_Rooms, OST_Floors, OST_Columns, OST_StructuralFraming, OST_Windows."
-                    },
-                    "filters": {
-                      "type": "array",
-                      "description": "Parameter filters (all must match — AND logic).",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "parameterName": {
-                            "type": "string",
-                            "description": "Exact Revit parameter name, e.g. 'Comments', 'Fire Rating', 'Mark', 'Name'."
-                          },
-                          "operator": {
-                            "type": "string",
-                            "enum": ["eq","neq","contains","starts_with","ends_with","regex","not_regex","gt","lt","gte","lte","is_empty","not_empty"],
-                            "description": "eq, neq, contains, starts_with, ends_with, regex (value=.NET regex, e.g. '^\\\\d+ MIN$'), gt/lt/gte/lte (numeric), is_empty / not_empty (no value needed)."
-                          },
-                          "value": {
-                            "description": "The value to compare against (string or number)."
-                          }
-                        },
-                        "required": ["parameterName"]
-                      }
-                    },
-                    "fields": {
-                      "type": "array",
-                      "items": { "type": "string" },
-                      "description": "Extra parameter names to include in each result."
-                    },
-                    "limit": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 500,
-                      "description": "Max results. Default 200."
-                    }
-                  },
-                  "required": ["category"]
                 }
                 """)),
 
@@ -301,85 +301,6 @@ public static class ToolSpecAdapter
                 "Get currently selected elements in Revit (those the user has clicked on). " +
                 "Dùng khi người dùng nói 'cái này', 'phần tử đang chọn', 'những cái đang bôi đen'.",
                 Schema("""{"type":"object","properties":{}}""")),
-
-            // ── Parameter edit ──────────────────────────────────────────────
-            new ToolDefinition(
-                "set_parameter",
-                "Set ONE parameter on ONE element. " +
-                "Dùng khi chỉ cần sửa một cấu kiện duy nhất. " +
-                "For bulk edits prefer set_parameter_batch.",
-                Schema("""
-                {
-                  "type": "object",
-                  "properties": {
-                    "id": { "type": "integer", "description": "ElementId of the element to edit." },
-                    "parameterName": {
-                      "type": "string",
-                      "description": "Exact Revit parameter name, e.g. 'Comments', 'Fire Rating', 'Mark'."
-                    },
-                    "value": {
-                      "description": "New value. String for text params; number for numeric; true/false for Yes/No."
-                    },
-                    "units": {
-                      "type": "string",
-                      "enum": ["meters", "feet", "internal"],
-                      "description": "Unit for numeric length/area/volume params. Default 'internal' (Revit feet). Use 'meters' when the user gives metric values."
-                    }
-                  },
-                  "required": ["id", "parameterName", "value"]
-                }
-                """)),
-
-            new ToolDefinition(
-                "set_parameter_batch",
-                "Set the SAME parameter to the SAME value on MULTIPLE elements in one transaction. " +
-                "Dùng cho bulk edit: 'đặt [tham số] = [giá trị] cho tất cả [cấu kiện]'. " +
-                "ALWAYS call find_elements first to get the ids array.",
-                Schema("""
-                {
-                  "type": "object",
-                  "properties": {
-                    "ids": {
-                      "type": "array",
-                      "items": { "type": "integer" },
-                      "description": "Array of ElementId integers to edit. Get these from find_elements first.",
-                      "minItems": 1
-                    },
-                    "parameterName": {
-                      "type": "string",
-                      "description": "Exact Revit parameter name."
-                    },
-                    "value": {
-                      "description": "New value. Same type rules as set_parameter."
-                    },
-                    "units": {
-                      "type": "string",
-                      "enum": ["meters", "feet", "internal"],
-                      "description": "Unit for numeric dimensional params. Default 'internal'."
-                    },
-                    "atomic": {
-                      "type": "boolean",
-                      "description": "If true, rollback ALL on any failure. Default false (best-effort)."
-                    }
-                  },
-                  "required": ["ids", "parameterName", "value"]
-                }
-                """)),
-
-            new ToolDefinition(
-                "rename_element",
-                "Rename an element (sets its Name parameter). " +
-                "Dùng khi người dùng muốn đổi tên một phần tử.",
-                Schema("""
-                {
-                  "type": "object",
-                  "properties": {
-                    "id": { "type": "integer", "description": "ElementId." },
-                    "newName": { "type": "string", "description": "The new name." }
-                  },
-                  "required": ["id", "newName"]
-                }
-                """)),
 
             // ── Assistant-level tools ───────────────────────────────────────
             new ToolDefinition(

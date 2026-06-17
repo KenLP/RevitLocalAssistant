@@ -9,10 +9,9 @@ public sealed class ToolSpecAdapterTests
     private readonly IReadOnlyList<ToolDefinition> _tools = ToolSpecAdapter.BuildToolSurface();
 
     [Fact]
-    public void BuildToolSurface_Returns19Tools()
+    public void BuildToolSurface_HasTools()
     {
-        // echo_interpretation + clarify + 17 Revit tools
-        _tools.Should().HaveCountGreaterThanOrEqualTo(19);
+        _tools.Should().HaveCountGreaterThanOrEqualTo(12);
     }
 
     [Theory]
@@ -25,22 +24,31 @@ public sealed class ToolSpecAdapterTests
     [InlineData("list_materials")]
     [InlineData("list_phases")]
     [InlineData("list_sheets")]
-    [InlineData("list_elements")]
-    [InlineData("find_elements")]
+    [InlineData("query_where")]
+    [InlineData("update_where")]
     [InlineData("count_elements")]
     [InlineData("aggregate_elements")]
     [InlineData("get_element_info")]
     [InlineData("get_parameter")]
     [InlineData("get_selected_elements")]
-    [InlineData("set_parameter")]
-    [InlineData("set_parameter_batch")]
-    [InlineData("rename_element")]
     [InlineData("echo_interpretation")]
     [InlineData("clarify")]
     public void BuildToolSurface_ContainsTool(string toolName)
     {
         _tools.Should().Contain(t => t.Name == toolName,
             because: $"tool '{toolName}' must be in the surface");
+    }
+
+    [Theory]
+    [InlineData("find_elements")]
+    [InlineData("set_parameter")]
+    [InlineData("set_parameter_batch")]
+    [InlineData("rename_element")]
+    [InlineData("list_elements")]
+    public void BuildToolSurface_BlocksRawTools(string toolName)
+    {
+        _tools.Should().NotContain(t => t.Name == toolName,
+            because: "raw id-based / instance-only tools are blocked; LLM uses query_where/update_where");
     }
 
     [Fact]
@@ -66,21 +74,22 @@ public sealed class ToolSpecAdapterTests
     }
 
     [Fact]
-    public void FindElements_HasCategoryAsRequiredField()
+    public void QueryWhere_HasCategoryRequired_AndRichOperators()
     {
-        var findElements = _tools.Single(t => t.Name == "find_elements");
-        var json = findElements.ToJsonNode().ToJsonString();
-        json.Should().Contain("\"required\"");
-        json.Should().Contain("\"category\"");
+        var tool = _tools.Single(t => t.Name == "query_where");
+        var json = tool.ToJsonNode().ToJsonString();
+        json.Should().Contain("\"category\"").And.Contain("\"required\"");
+        json.Should().Contain("ends_with").And.Contain("not_regex").And.Contain("is_empty");
+        json.Should().Contain("\"scope\"");   // instance vs type
     }
 
     [Fact]
-    public void SetParameterBatch_HasIdsAsRequired()
+    public void UpdateWhere_HasSetAndScope()
     {
-        var tool = _tools.Single(t => t.Name == "set_parameter_batch");
+        var tool = _tools.Single(t => t.Name == "update_where");
         var json = tool.ToJsonNode().ToJsonString();
-        json.Should().Contain("\"ids\"");
-        json.Should().Contain("\"required\"");
+        json.Should().Contain("\"set\"").And.Contain("\"atomic\"");
+        json.Should().Contain("\"scope\"");
     }
 
     [Fact]

@@ -19,11 +19,53 @@ public static class PreviewBuilder
 
         return write.FunctionName switch
         {
+            "update_where"        => BuildUpdateWhere(args, data),
             "set_parameter_batch" => BuildBatch(args, data),
             "set_parameter"       => BuildSingle(args),
             "rename_element"      => BuildRename(args),
             _                     => BuildGeneric(write, data),
         };
+    }
+
+    // ── update_where (deterministic + read-back verify) ──────────────────────
+
+    private static ChangePreview BuildUpdateWhere(JsonObject args, JsonObject data)
+    {
+        var setObj = args["set"] as JsonObject ?? new JsonObject();
+        var paramName = Str(setObj, "parameter") ?? Str(setObj, "parameterName") ?? "(tham số)";
+        var value = ValueText(setObj["value"]);
+
+        var matched = IntOr(data, "matchedCount", 0);
+        var applied = IntOr(data, "applied", 0);
+        var failed = IntOr(data, "failed", 0);
+        var affected = IntOr(data, "affectedInstances", matched);
+        var scope = Str(data, "scope") ?? "instance";
+
+        var rows = new List<PreviewRow>();
+        if (data["results"] is JsonArray results)
+        {
+            foreach (var r in results)
+            {
+                if (rows.Count >= MaxRows) break;
+                if (r is not JsonObject ro) continue;
+                var id = LongOrNull(ro, "id");
+                var ok = ro["ok"] is JsonValue v && v.TryGetValue<bool>(out var b) && b;
+                var name = Str(ro, "name");
+                var detail = ok
+                    ? $"{paramName} → {value}"
+                    : $"✗ {Str(ro, "reason") ?? "lỗi"}";
+                rows.Add(new PreviewRow($"ID {id?.ToString() ?? "?"}{(name is null ? "" : $" · {name}")}",
+                                        detail, IsFailure: !ok));
+            }
+        }
+
+        var summary = $"Đặt '{paramName}' = '{value}' cho {matched} phần tử khớp."
+                    + $" Dry-run: {applied} OK" + (failed > 0 ? $", {failed} lỗi." : ".");
+        if (scope == "type" && affected > matched)
+            summary += $" ⚠️ '{paramName}' là tham số LOẠI — sẽ ảnh hưởng {affected} phần tử "
+                     + $"(thêm {affected - matched} ngoài {matched} khớp).";
+
+        return new ChangePreview("Sửa tham số (theo điều kiện)", summary, rows, matched, failed);
     }
 
     // ── set_parameter_batch ──────────────────────────────────────────────────
