@@ -74,6 +74,35 @@ public sealed class OrchestratorChatService : IChatService
         _pendingWrite = null;
     }
 
+    /// <summary>Compact snapshot of the recent backend conversation (for feedback logs).</summary>
+    public string SnapshotContext()
+    {
+        var arr = new JsonArray();
+        var start = Math.Max(0, _conversation.Count - 14);
+        for (var i = start; i < _conversation.Count; i++)
+        {
+            var m = _conversation[i];
+            var o = new JsonObject { ["role"] = m.Role.ToString() };
+            if (!string.IsNullOrEmpty(m.Content)) o["content"] = Truncate(m.Content!, 800);
+            if (m.ToolCalls is { Count: > 0 })
+            {
+                var calls = new JsonArray();
+                foreach (var tc in m.ToolCalls)
+                    calls.Add(new JsonObject
+                    {
+                        ["name"] = tc.FunctionName,
+                        ["args"] = Truncate(tc.ArgumentsJson, 400),
+                    });
+                o["tool_calls"] = calls;
+            }
+            arr.Add(o);
+        }
+        return arr.ToJsonString();
+    }
+
+    private static string Truncate(string s, int max) =>
+        s.Length <= max ? s : s.Substring(0, max) + "…";
+
     /// <summary>
     /// On the first message, seed the system prompt. If no static schema was
     /// supplied, fetch the real levels + categories from the active document so

@@ -13,6 +13,7 @@ namespace RevitAssistant.UI;
 public sealed partial class ChatViewModel : ObservableObject
 {
     private readonly IChatService _chat;
+    private readonly IFeedbackSink _feedback;
 
     public ObservableCollection<ChatMessageVm> Messages { get; } = new();
 
@@ -43,9 +44,10 @@ public sealed partial class ChatViewModel : ObservableObject
     /// <summary>True at ≥85% — surfaced as a warning so the user can 🗑 Xóa.</summary>
     public bool ContextWarning => ContextUsagePercent >= 85;
 
-    public ChatViewModel(IChatService chat)
+    public ChatViewModel(IChatService chat, IFeedbackSink? feedback = null)
     {
         _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+        _feedback = feedback ?? new NullFeedbackSink();
     }
 
     /// <summary>Design-time / XAML-preview constructor — seeds sample bubbles.</summary>
@@ -138,11 +140,41 @@ public sealed partial class ChatViewModel : ObservableObject
     private void ApplyTurn(ChatTurn turn)
     {
         foreach (var reply in turn.Replies)
-            Messages.Add(reply.IsError
-                ? ChatMessageVm.FromError(reply.Text)
-                : ChatMessageVm.FromAssistant(reply.Text));
+        {
+            if (reply.IsError)
+            {
+                Messages.Add(ChatMessageVm.FromError(reply.Text));
+            }
+            else
+            {
+                var m = ChatMessageVm.FromAssistant(reply.Text);
+                m.RateHandler = HandleRate;
+                m.SubmitReasonHandler = HandleSubmitReason;
+                Messages.Add(m);
+            }
+        }
 
         PendingPreview = turn.Pending;
         ContextUsagePercent = (int)System.Math.Round(turn.ContextUsage * 100);
+    }
+
+    // ── Feedback ─────────────────────────────────────────────────────────────
+
+    private void HandleRate(ChatMessageVm msg, bool liked)
+    {
+        if (liked) return;   // 👍 — nothing to log; just acknowledged in the UI
+        // 👎 — capture immediately (context may change before the user types a reason).
+        _feedback.Record(new FeedbackEntry(
+            DateTime.Now, Liked: false, msg.Text, Reason: null, _chat.SnapshotContext()));
+    }
+
+    private void HandleSubmitReason(ChatMessageVm msg)
+    {
+        var reason = msg.ReasonText?.Trim();
+        _feedback.Record(new FeedbackEntry(
+            DateTime.Now, Liked: false, msg.Text,
+            string.IsNullOrEmpty(reason) ? null : reason, _chat.SnapshotContext()));
+        msg.ReasonText = string.Empty;
+        Messages.Add(ChatMessageVm.FromSystem("Cảm ơn phản hồi — đã ghi nhận để cải thiện."));
     }
 }

@@ -24,6 +24,9 @@ public interface IChatService
 
     /// <summary>Start a fresh conversation — clears history and any pending write.</summary>
     void Reset();
+
+    /// <summary>Compact snapshot of recent backend conversation — logged on thumbs-down.</summary>
+    string SnapshotContext();
 }
 
 /// <summary>

@@ -29,6 +29,7 @@ public sealed class ChatViewModelTests
         public void CancelPending() => CancelCount++;
         public int ResetCount { get; private set; }
         public void Reset() => ResetCount++;
+        public string SnapshotContext() => "ctx";
     }
 
     private sealed class ThrowingChatService : IChatService
@@ -39,6 +40,7 @@ public sealed class ChatViewModelTests
             => throw new InvalidOperationException("boom");
         public void CancelPending() { }
         public void Reset() { }
+        public string SnapshotContext() => "";
     }
 
     private sealed class GatedChatService : IChatService
@@ -49,6 +51,7 @@ public sealed class ChatViewModelTests
         public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default) => Gate.Task;
         public void CancelPending() { }
         public void Reset() { }
+        public string SnapshotContext() => "";
     }
 
     private static ChatTurn Reply(string text, bool isError = false) =>

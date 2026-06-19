@@ -22,4 +22,6 @@ public sealed class PlaceholderChatService : IChatService
     public void CancelPending() { }
 
     public void Reset() { }
+
+    public string SnapshotContext() => "";
 }

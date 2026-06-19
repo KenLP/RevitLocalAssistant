@@ -65,6 +65,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Header -->
@@ -128,6 +129,51 @@
                                                Margin="0,0,0,2"
                                                Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
                                     <TextBlock Text="{Binding Text}" Style="{StaticResource BubbleText}" />
+
+                                    <!-- 👍 / 👎 feedback (assistant only) -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,5,0,0"
+                                                Visibility="{Binding CanRate, Converter={StaticResource BoolToVis}}">
+                                        <Button Content="👍" Command="{Binding ThumbUpCommand}"
+                                                ToolTip="Phản hồi tốt" Padding="4,0" FontSize="12"
+                                                BorderThickness="0" Background="Transparent" Cursor="Hand">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Opacity" Value="0.45" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Feedback}" Value="Up">
+                                                            <Setter Property="Opacity" Value="1" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        <Button Content="👎" Command="{Binding ThumbDownCommand}"
+                                                ToolTip="Phản hồi chưa đúng" Padding="4,0" FontSize="12"
+                                                BorderThickness="0" Background="Transparent" Cursor="Hand">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Opacity" Value="0.45" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Feedback}" Value="Down">
+                                                            <Setter Property="Opacity" Value="1" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <!-- reason box on 👎 -->
+                                    <StackPanel Margin="0,4,0,0"
+                                                Visibility="{Binding ShowReasonBox, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="Điều gì chưa chính xác? (tuỳ chọn)" FontSize="10" Opacity="0.7"
+                                                   Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+                                        <TextBox Text="{Binding ReasonText, UpdateSourceTrigger=PropertyChanged}"
+                                                 AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="60"
+                                                 Margin="0,2,0,0" />
+                                        <Button Content="Gửi góp ý" Command="{Binding SubmitReasonCommand}"
+                                                HorizontalAlignment="Left" Margin="0,4,0,0" Padding="8,2" FontSize="11" />
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
@@ -234,5 +280,11 @@
                         MinWidth="56" Margin="4,0,0,0" Padding="8,4" />
             </Grid>
         </Border>
+
+        <!-- Disclaimer -->
+        <TextBlock Grid.Row="5" Margin="6,4,6,2" TextAlignment="Center" TextWrapping="Wrap"
+                   FontSize="10" Opacity="0.55"
+                   Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                   Text="Câu trả lời do AI tạo có thể thiếu sót hoặc chưa chính xác. Hãy kiểm tra kết quả trước khi sử dụng." />
     </Grid>
 </UserControl>

@@ -88,7 +88,7 @@ public sealed class App : IExternalApplication
         var bridge = new RevitBridge();
         var chat = new OrchestratorChatService(llm, bridge, modelSchemaJson: null, contextTokens: numCtx);
 
-        var view = new ChatView { DataContext = new ChatViewModel(chat) };
+        var view = new ChatView { DataContext = new ChatViewModel(chat, new FileFeedbackSink()) };
         application.RegisterDockablePane(PaneId, "Trợ lý Revit", new AssistantPaneProvider(view));
     }
 
