@@ -32,7 +32,8 @@ public static class Aggregator
     /// </summary>
     public static JsonObject Summarize(
         JsonObject findEnvelope, string? groupBy,
-        IReadOnlyDictionary<string, double>? levelOrder = null)
+        IReadOnlyDictionary<string, double>? levelOrder = null,
+        bool descending = false)
     {
         if (!IsOk(findEnvelope)) return findEnvelope;
 
@@ -55,9 +56,12 @@ public static class Aggregator
             counts[key] = counts.GetValueOrDefault(key) + 1;
         }
 
-        // When grouping by Level, order by real elevation (low→high); else by count desc.
+        // When grouping by Level, order by real elevation (low→high, or high→low when
+        // descending); else by count desc.
         var ordered = (levelOrder != null
-                ? counts.OrderBy(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key)
+                ? (descending
+                    ? counts.OrderByDescending(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key)
+                    : counts.OrderBy(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key))
                 : counts.OrderByDescending(k => k.Value).ThenBy(k => k.Key))
             .ToList();
         var groups = new JsonArray();
@@ -90,7 +94,8 @@ public static class Aggregator
         string unitLabel,
         int top = 0,
         string? groupBy = null,
-        IReadOnlyDictionary<string, double>? levelOrder = null)
+        IReadOnlyDictionary<string, double>? levelOrder = null,
+        bool descending = false)
     {
         if (!IsOk(findEnvelope)) return findEnvelope;
 
@@ -147,7 +152,9 @@ public static class Aggregator
         if (!string.IsNullOrWhiteSpace(groupBy))
         {
             var ordered = (levelOrder != null
-                    ? groups.OrderBy(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key)
+                    ? (descending
+                        ? groups.OrderByDescending(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key)
+                        : groups.OrderBy(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key))
                     : groups.OrderByDescending(k => k.Value.Sum))
                 .ToList();
             var garr = new JsonArray();

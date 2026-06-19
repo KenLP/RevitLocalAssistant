@@ -192,6 +192,11 @@ public static class ToolSpecAdapter
                       "type": "string",
                       "description": "Optional parameter name to break the count down by, e.g. 'Level', 'Fire Rating', 'Department'."
                     },
+                    "order": {
+                      "type": "string",
+                      "enum": ["asc", "desc"],
+                      "description": "When groupBy='Level': asc = low→high by elevation (default), desc = high→low."
+                    },
                     "filters": {
                       "type": "array",
                       "description": "Optional filters (AND), instance-scope. For TYPE params (e.g. Fire Rating) use query_where instead.",
@@ -239,6 +244,11 @@ public static class ToolSpecAdapter
                     "groupBy": {
                       "type": "string",
                       "description": "Optional parameter to break stats down by, e.g. 'Level'."
+                    },
+                    "order": {
+                      "type": "string",
+                      "enum": ["asc", "desc"],
+                      "description": "When groupBy='Level': asc = low→high by elevation (default), desc = high→low."
                     },
                     "top": {
                       "type": "integer",

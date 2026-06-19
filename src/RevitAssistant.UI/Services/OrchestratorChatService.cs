@@ -427,8 +427,11 @@ public sealed class OrchestratorChatService : IChatService
 
         var env = await FetchFilteredAsync(category!, args["filters"] as JsonArray, extra, ct)
             .ConfigureAwait(false);
-        return Aggregator.Summarize(env, groupBy, LevelOrderFor(groupBy));
+        return Aggregator.Summarize(env, groupBy, LevelOrderFor(groupBy), IsDescending(args));
     }
+
+    private static bool IsDescending(JsonObject args) =>
+        string.Equals(args["order"]?.GetValue<string>(), "desc", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// aggregate_elements: sum/min/max/avg of a numeric parameter over rich-filtered
@@ -459,7 +462,8 @@ public sealed class OrchestratorChatService : IChatService
 
         var env = await FetchFilteredAsync(category!, args["filters"] as JsonArray, extra, ct)
             .ConfigureAwait(false);
-        return Aggregator.SummarizeNumeric(env, parameter!, factor, label, top, groupBy, LevelOrderFor(groupBy));
+        return Aggregator.SummarizeNumeric(
+            env, parameter!, factor, label, top, groupBy, LevelOrderFor(groupBy), IsDescending(args));
     }
 
     private static IEnumerable<string> StringList(JsonNode? node)

@@ -66,6 +66,18 @@ public sealed class AggregatorTests
     }
 
     [Fact]
+    public void Summarize_WithLevelOrder_Descending_HighToLow()
+    {
+        var env = Find(3, (1, "L1"), (2, "L2"), (3, "L3"));
+        var order = new Dictionary<string, double> { ["L1"] = 0, ["L2"] = 3.5, ["L3"] = 7 };
+
+        var r = Aggregator.Summarize(env, "Level", order, descending: true);
+        var groups = (JsonArray)r["data"]!["groups"]!;
+        groups.Select(g => g!["value"]!.GetValue<string>())
+              .Should().ContainInOrder("L3", "L2", "L1");
+    }
+
+    [Fact]
     public void Summarize_MissingGroupValue_BucketsAsEmpty()
     {
         var env = Find(2, (1, "L1"), (2, null));

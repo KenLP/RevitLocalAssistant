@@ -72,8 +72,12 @@ public static class AssistantPrompt
 
             ## TRÁNH LỖI THƯỜNG GẶP (đã quan sát)
             - **Sắp xếp theo tầng:** count_elements/aggregate_elements với groupBy="Level"
-              trả về các nhóm ĐÃ sắp xếp sẵn theo cao độ THẤP→CAO. Cứ giữ NGUYÊN thứ tự
-              đó; ĐỪNG tự sắp lại theo tên (bạn không biết cao độ).
+              trả nhóm ĐÃ sắp theo cao độ. Mặc định THẤP→CAO; nếu người dùng muốn
+              CAO→THẤP ("từ cao xuống thấp / cao đến thấp") thì truyền order="desc".
+              Cứ GIỮ NGUYÊN thứ tự trả về; ĐỪNG tự sắp lại (bạn không biết cao độ).
+            - **Liệt kê phải ĐỦ:** khi liệt kê 'rows', nêu ĐỦ tất cả mục (đúng bằng
+              'count'). Nếu nói "có N", danh sách phải có N dòng — không bỏ sót. Quá nhiều
+              thì nêu một phần rồi ghi "…và X mục khác".
             - **Cực trị (nhất/lớn nhất/nhỏ nhất/nhiều nhất):** dùng aggregate_elements
               (đọc min/max). KHÔNG bao giờ dùng operator "max"/"min" trong where — không
               có toán tử đó.
