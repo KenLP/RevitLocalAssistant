@@ -70,6 +70,24 @@ public static class AssistantPrompt
             - Nếu kết quả có "truncated":true hoặc "note" về >5000 phần tử → số liệu CHƯA
               đầy đủ, nói rõ với người dùng.
 
+            ## TRÁNH LỖI THƯỜNG GẶP (đã quan sát)
+            - **Sắp xếp theo tầng:** count_elements/aggregate_elements với groupBy="Level"
+              trả về các nhóm ĐÃ sắp xếp sẵn theo cao độ THẤP→CAO. Cứ giữ NGUYÊN thứ tự
+              đó; ĐỪNG tự sắp lại theo tên (bạn không biết cao độ).
+            - **Cực trị (nhất/lớn nhất/nhỏ nhất/nhiều nhất):** dùng aggregate_elements
+              (đọc min/max). KHÔNG bao giờ dùng operator "max"/"min" trong where — không
+              có toán tử đó.
+            - **"chưa/không có [tham số]"** → operator "is_empty" trên CHÍNH tham số đó.
+              Vd "cửa chưa đánh Mark" → where {parameter:"Mark", operator:"is_empty"}.
+              ĐỪNG so sánh với chữ "Mark".
+            - **Tên tầng:** dùng ĐÚNG tên trong danh sách (vd "L1 - Block 35"). "tầng 1"/
+              "L1" có thể ứng nhiều tầng — nếu không khớp chính xác, dùng operator
+              "contains" hoặc gọi clarify, ĐỪNG đoán "L1".
+            - **Câu mơ hồ/chủ quan** ("lãng phí diện tích nhất", "đẹp nhất"…) → gọi
+              clarify hỏi tiêu chí cụ thể; đừng tự bịa.
+            - **LUÔN trả lời tiếng Việt** — kể cả khi bối rối, KHÔNG chuyển sang ngôn ngữ
+              khác.
+
             ## TOOL-CALL SHAPE — copy these EXACTLY (keys matter)
             Each where item is ONE object {parameter, operator, value}. Do NOT split a
             condition across objects; do NOT use keys like Field/Operator/=.

@@ -40,6 +40,7 @@ public sealed class OrchestratorChatService : IChatService
     private readonly int _trimTarget;     // trim down to this
 
     private readonly List<ChatMessage> _conversation = new();
+    private readonly Dictionary<string, double> _levelElev = new(StringComparer.OrdinalIgnoreCase);
     private ToolCall? _pendingWrite;
 
     public OrchestratorChatService(
@@ -71,6 +72,7 @@ public sealed class OrchestratorChatService : IChatService
     public void Reset()
     {
         _conversation.Clear();
+        _levelElev.Clear();
         _pendingWrite = null;
     }
 
@@ -123,12 +125,42 @@ public sealed class OrchestratorChatService : IChatService
             var empty = new JsonObject();
             var levels = await _revit.CallAsync("list_levels", empty, false, ct).ConfigureAwait(false);
             var cats = await _revit.CallAsync("list_categories", new JsonObject(), false, ct).ConfigureAwait(false);
+            PopulateLevelOrder(levels);
             return ModelSchema.Build(levels, cats);
         }
         catch
         {
             return null;   // no document / dispatcher not ready → fall back to generic prompt
         }
+    }
+
+    /// <summary>Capture level name → elevation so "group by Level" can sort low→high.</summary>
+    private void PopulateLevelOrder(JsonObject levelsEnv)
+    {
+        _levelElev.Clear();
+        if (levelsEnv["data"]?["levels"] is not JsonArray arr) return;
+        foreach (var l in arr)
+        {
+            var name = l?["name"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            var elev = TryGetDouble(l?["elevationFeet"]) ?? TryGetDouble(l?["elevationMeters"]) ?? 0;
+            _levelElev[name!] = elev;
+        }
+    }
+
+    private IReadOnlyDictionary<string, double>? LevelOrderFor(string? groupBy) =>
+        !string.IsNullOrWhiteSpace(groupBy) &&
+        groupBy!.Contains("level", StringComparison.OrdinalIgnoreCase) &&
+        _levelElev.Count > 0
+            ? _levelElev
+            : null;
+
+    private static double? TryGetDouble(JsonNode? n)
+    {
+        if (n is null) return null;
+        try { return n.GetValue<double>(); } catch { }
+        try { return n.GetValue<long>(); } catch { }
+        return null;
     }
 
     public async Task<ChatTurn> ConfirmAsync(CancellationToken ct = default)
@@ -395,7 +427,7 @@ public sealed class OrchestratorChatService : IChatService
 
         var env = await FetchFilteredAsync(category!, args["filters"] as JsonArray, extra, ct)
             .ConfigureAwait(false);
-        return Aggregator.Summarize(env, groupBy);
+        return Aggregator.Summarize(env, groupBy, LevelOrderFor(groupBy));
     }
 
     /// <summary>
@@ -427,7 +459,7 @@ public sealed class OrchestratorChatService : IChatService
 
         var env = await FetchFilteredAsync(category!, args["filters"] as JsonArray, extra, ct)
             .ConfigureAwait(false);
-        return Aggregator.SummarizeNumeric(env, parameter!, factor, label, top, groupBy);
+        return Aggregator.SummarizeNumeric(env, parameter!, factor, label, top, groupBy, LevelOrderFor(groupBy));
     }
 
     private static IEnumerable<string> StringList(JsonNode? node)

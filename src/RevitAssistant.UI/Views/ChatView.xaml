@@ -56,6 +56,32 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+
+        <!-- Selectable message body: a read-only TextBox styled to look like text,
+             so users can select words and Ctrl+C / right-click → Copy. -->
+        <Style x:Key="BubbleTextBox" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Cursor" Value="IBeam" />
+            <Setter Property="Foreground"
+                    Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsUser}" Value="True">
+                    <Setter Property="Foreground" Value="White" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="Error">
+                    <Setter Property="Foreground" Value="White" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Kind}" Value="System">
+                    <Setter Property="FontStyle" Value="Italic" />
+                    <Setter Property="Opacity" Value="0.7" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </UserControl.Resources>
 
     <Grid Margin="4">
@@ -128,7 +154,8 @@
                                     <TextBlock Text="{Binding Sender}" FontSize="10" Opacity="0.65"
                                                Margin="0,0,0,2"
                                                Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
-                                    <TextBlock Text="{Binding Text}" Style="{StaticResource BubbleText}" />
+                                    <TextBox Text="{Binding Text, Mode=OneWay}"
+                                             Style="{StaticResource BubbleTextBox}" />
 
                                     <!-- 👍 / 👎 feedback (assistant only) -->
                                     <StackPanel Orientation="Horizontal" Margin="0,5,0,0"

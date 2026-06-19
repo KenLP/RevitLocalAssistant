@@ -89,6 +89,19 @@ public sealed class AggregatorNumericTests
     }
 
     [Fact]
+    public void GroupBy_WithLevelOrder_SortsByElevation()
+    {
+        // sums: L3=100, L1=10, L2=50 → by sum desc = L3,L2,L1; by elevation = L1,L2,L3.
+        var env = Find("Area", (1, "a", 100, "L3"), (2, "b", 10, "L1"), (3, "c", 50, "L2"));
+        var order = new Dictionary<string, double> { ["L1"] = 0, ["L2"] = 3.5, ["L3"] = 7 };
+
+        var r = Aggregator.SummarizeNumeric(env, "Area", 1.0, "", groupBy: "Level", levelOrder: order);
+        var groups = (JsonArray)r["data"]!["groups"]!;
+        groups.Select(g => g!["value"]!.GetValue<string>())
+              .Should().ContainInOrder("L1", "L2", "L3");
+    }
+
+    [Fact]
     public void ElementsMissingParam_AreSkipped()
     {
         var env = Find("Volume", (1, "a", 100, null));

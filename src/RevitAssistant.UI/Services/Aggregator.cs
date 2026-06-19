@@ -30,7 +30,9 @@ public static class Aggregator
     /// { total } or, when grouped, { total, groupBy, groups:[{value,count}] }.
     /// Errors are passed straight through.
     /// </summary>
-    public static JsonObject Summarize(JsonObject findEnvelope, string? groupBy)
+    public static JsonObject Summarize(
+        JsonObject findEnvelope, string? groupBy,
+        IReadOnlyDictionary<string, double>? levelOrder = null)
     {
         if (!IsOk(findEnvelope)) return findEnvelope;
 
@@ -53,7 +55,11 @@ public static class Aggregator
             counts[key] = counts.GetValueOrDefault(key) + 1;
         }
 
-        var ordered = counts.OrderByDescending(k => k.Value).ThenBy(k => k.Key).ToList();
+        // When grouping by Level, order by real elevation (low→high); else by count desc.
+        var ordered = (levelOrder != null
+                ? counts.OrderBy(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key)
+                : counts.OrderByDescending(k => k.Value).ThenBy(k => k.Key))
+            .ToList();
         var groups = new JsonArray();
         foreach (var kv in ordered.Take(MaxItems))
             groups.Add(new JsonObject { ["value"] = kv.Key, ["count"] = kv.Value });
@@ -83,7 +89,8 @@ public static class Aggregator
         double factor,
         string unitLabel,
         int top = 0,
-        string? groupBy = null)
+        string? groupBy = null,
+        IReadOnlyDictionary<string, double>? levelOrder = null)
     {
         if (!IsOk(findEnvelope)) return findEnvelope;
 
@@ -139,7 +146,10 @@ public static class Aggregator
 
         if (!string.IsNullOrWhiteSpace(groupBy))
         {
-            var ordered = groups.OrderByDescending(k => k.Value.Sum).ToList();
+            var ordered = (levelOrder != null
+                    ? groups.OrderBy(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key)
+                    : groups.OrderByDescending(k => k.Value.Sum))
+                .ToList();
             var garr = new JsonArray();
             foreach (var kv in ordered.Take(MaxItems))
                 garr.Add(new JsonObject
@@ -265,6 +275,9 @@ public static class Aggregator
 
     private static bool IsTruncated(JsonObject data) =>
         data["truncated"] is JsonValue v && v.TryGetValue<bool>(out var t) && t;
+
+    private static double Elev(IReadOnlyDictionary<string, double> order, string key) =>
+        order.TryGetValue(key, out var e) ? e : double.MaxValue;   // unknown levels sort last
 
     private static JsonObject Ok(JsonNode data) => new() { ["ok"] = true, ["data"] = data };
 
