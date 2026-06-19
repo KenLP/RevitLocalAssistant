@@ -75,9 +75,10 @@ public static class AssistantPrompt
               trả nhóm ĐÃ sắp theo cao độ. Mặc định THẤP→CAO; nếu người dùng muốn
               CAO→THẤP ("từ cao xuống thấp / cao đến thấp") thì truyền order="desc".
               Cứ GIỮ NGUYÊN thứ tự trả về; ĐỪNG tự sắp lại (bạn không biết cao độ).
-            - **Liệt kê phải ĐỦ:** khi liệt kê 'rows', nêu ĐỦ tất cả mục (đúng bằng
-              'count'). Nếu nói "có N", danh sách phải có N dòng — không bỏ sót. Quá nhiều
-              thì nêu một phần rồi ghi "…và X mục khác".
+            - **Liệt kê → đã có BẢNG tự động:** kết quả dạng danh sách (rows/groups) được
+              app hiển thị thành BẢNG ngay dưới câu trả lời. Vì vậy bạn CHỈ cần tóm tắt
+              ngắn (vd "Có 8 cửa:") — ĐỪNG liệt kê lại từng dòng trong văn bản (bảng đã
+              hiển thị đầy đủ). Báo đúng con số 'count'.
             - **Cực trị (nhất/lớn nhất/nhỏ nhất/nhiều nhất):** dùng aggregate_elements
               (đọc min/max). KHÔNG bao giờ dùng operator "max"/"min" trong where — không
               có toán tử đó.

@@ -41,6 +41,7 @@ public sealed class OrchestratorChatService : IChatService
 
     private readonly List<ChatMessage> _conversation = new();
     private readonly Dictionary<string, double> _levelElev = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<ResultTable> _turnTables = new();
     private ToolCall? _pendingWrite;
 
     public OrchestratorChatService(
@@ -64,8 +65,9 @@ public sealed class OrchestratorChatService : IChatService
         await EnsureInitializedAsync(ct).ConfigureAwait(false);
         _conversation.Add(ChatMessage.User(userInput));
         _pendingWrite = null;
+        _turnTables.Clear();
         var turn = await RunLoopAsync(ct).ConfigureAwait(false);
-        return turn with { ContextUsage = CurrentUsage() };
+        return turn with { ContextUsage = CurrentUsage(), Tables = _turnTables.ToList() };
     }
 
     /// <summary>Clear the conversation (and any pending write) — the "new chat" action.</summary>
@@ -170,6 +172,7 @@ public sealed class OrchestratorChatService : IChatService
 
         var write = _pendingWrite;
         _pendingWrite = null;
+        _turnTables.Clear();
 
         var replies = new List<ChatReply>();
         var result = await ExecuteAsync(write, dryRun: false, ct).ConfigureAwait(false);
@@ -181,7 +184,7 @@ public sealed class OrchestratorChatService : IChatService
 
         var tail = await RunLoopAsync(ct).ConfigureAwait(false);
         replies.AddRange(tail.Replies);
-        return new ChatTurn(replies, tail.Pending, CurrentUsage());
+        return new ChatTurn(replies, tail.Pending, CurrentUsage(), _turnTables.ToList());
     }
 
     public void CancelPending()
@@ -259,6 +262,7 @@ public sealed class OrchestratorChatService : IChatService
                     // group deterministically in C# so the model never miscounts.
                     var counted = await CountElementsAsync(tc, ct).ConfigureAwait(false);
                     AppendToolResult(tc, counted);
+                    TryAddTable(counted);
                     continue;
                 }
 
@@ -266,6 +270,7 @@ public sealed class OrchestratorChatService : IChatService
                 {
                     var agg = await AggregateElementsAsync(tc, ct).ConfigureAwait(false);
                     AppendToolResult(tc, agg);
+                    TryAddTable(agg);
                     continue;
                 }
 
@@ -302,6 +307,7 @@ public sealed class OrchestratorChatService : IChatService
                 // Read tool — safe to run and feed straight back.
                 var read = await ExecuteAsync(tc, dryRun: false, ct).ConfigureAwait(false);
                 AppendToolResult(tc, read);
+                TryAddTable(read);   // query_where / list_* → render as a table
             }
 
             if (!reprompt && calls.Count == 0)
@@ -498,6 +504,13 @@ public sealed class OrchestratorChatService : IChatService
     private void AppendToolResult(ToolCall tc, JsonObject result) =>
         // Trim large arrays so a big query result can't truncate the system prompt.
         _conversation.Add(ChatMessage.ToolResult(tc.Id, ResultTrimmer.Trim(result).ToJsonString()));
+
+    /// <summary>If a tool result is tabular, capture it as a table to render in the UI.</summary>
+    private void TryAddTable(JsonObject result)
+    {
+        var table = TableExtractor.TryExtract(result);
+        if (table is { Rows.Count: > 0 }) _turnTables.Add(table);
+    }
 
     // ── Parsing helpers ──────────────────────────────────────────────────────
 

@@ -36,7 +36,8 @@ public interface IChatService
 public sealed record ChatTurn(
     IReadOnlyList<ChatReply> Replies,
     ChangePreview? Pending = null,
-    double ContextUsage = 0);
+    double ContextUsage = 0,
+    IReadOnlyList<ResultTable>? Tables = null);
 
 /// <summary>One assistant bubble. <see cref="IsError"/> renders as an error bubble.</summary>
 public readonly record struct ChatReply(string Text, bool IsError = false);

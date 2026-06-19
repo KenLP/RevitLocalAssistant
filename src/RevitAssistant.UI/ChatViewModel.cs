@@ -154,6 +154,10 @@ public sealed partial class ChatViewModel : ObservableObject
             }
         }
 
+        if (turn.Tables is { Count: > 0 })
+            foreach (var table in turn.Tables)
+                Messages.Add(ChatMessageVm.FromTable(table));
+
         PendingPreview = turn.Pending;
         ContextUsagePercent = (int)System.Math.Round(turn.ContextUsage * 100);
     }

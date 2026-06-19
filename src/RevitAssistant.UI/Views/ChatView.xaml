@@ -12,6 +12,7 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        <local:TableToGridConverter x:Key="TableToGrid" />
 
         <!-- Message bubble container -->
         <Style x:Key="BubbleStyle" TargetType="Border">
@@ -34,6 +35,9 @@
                     <Setter Property="HorizontalAlignment" Value="Center" />
                     <Setter Property="Background" Value="Transparent" />
                     <Setter Property="MaxWidth" Value="300" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsTable}" Value="True">
+                    <Setter Property="MaxWidth" Value="380" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -154,8 +158,24 @@
                                     <TextBlock Text="{Binding Sender}" FontSize="10" Opacity="0.65"
                                                Margin="0,0,0,2"
                                                Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+
+                                    <!-- TABLE bubble -->
+                                    <StackPanel Visibility="{Binding IsTable, Converter={StaticResource BoolToVis}}">
+                                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                                      VerticalScrollBarVisibility="Auto" MaxHeight="320">
+                                            <ContentControl Content="{Binding Table, Converter={StaticResource TableToGrid}}" />
+                                        </ScrollViewer>
+                                        <TextBlock Text="{Binding Text}" FontSize="10" Opacity="0.6" Margin="0,3,0,0"
+                                                   Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+                                        <Button Content="📋 Copy bảng" Command="{Binding CopyTableCommand}"
+                                                HorizontalAlignment="Left" Margin="0,4,0,0" Padding="6,2" FontSize="11"
+                                                ToolTip="Sao chép bảng (dán được vào Excel)" />
+                                    </StackPanel>
+
+                                    <!-- TEXT bubble -->
                                     <TextBox Text="{Binding Text, Mode=OneWay}"
-                                             Style="{StaticResource BubbleTextBox}" />
+                                             Style="{StaticResource BubbleTextBox}"
+                                             Visibility="{Binding IsText, Converter={StaticResource BoolToVis}}" />
 
                                     <!-- 👍 / 👎 feedback (assistant only) -->
                                     <StackPanel Orientation="Horizontal" Margin="0,5,0,0"

@@ -22,7 +22,12 @@ public sealed partial class ChatMessageVm : ObservableObject
 
     public bool IsUser => Kind == ChatMessageKind.User;
 
-    /// <summary>Only assistant bubbles can be rated.</summary>
+    /// <summary>Non-null when this bubble is a result table instead of text.</summary>
+    public ResultTable? Table { get; init; }
+    public bool IsTable => Table is not null;
+    public bool IsText => Table is null;
+
+    /// <summary>Only assistant text bubbles can be rated.</summary>
     public bool CanRate { get; init; }
 
     [ObservableProperty]
@@ -63,6 +68,17 @@ public sealed partial class ChatMessageVm : ObservableObject
         ShowReasonBox = false;
     }
 
+    /// <summary>Copy the table to the clipboard as TSV (paste-friendly into Excel).</summary>
+    [RelayCommand]
+    private void CopyTable()
+    {
+        if (Table is null) return;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(string.Join('\t', Table.Columns));
+        foreach (var row in Table.Rows) sb.AppendLine(string.Join('\t', row));
+        try { System.Windows.Clipboard.SetText(sb.ToString()); } catch { /* clipboard busy */ }
+    }
+
     public static ChatMessageVm FromUser(string text) =>
         new() { Kind = ChatMessageKind.User, Sender = "Bạn", Text = text };
 
@@ -74,4 +90,13 @@ public sealed partial class ChatMessageVm : ObservableObject
 
     public static ChatMessageVm FromError(string text) =>
         new() { Kind = ChatMessageKind.Error, Sender = "Lỗi", Text = text };
+
+    public static ChatMessageVm FromTable(ResultTable table) =>
+        new()
+        {
+            Kind = ChatMessageKind.Assistant,
+            Sender = "Kết quả",
+            Table = table,
+            Text = table.Truncated ? $"Hiển thị {table.Rows.Count}/{table.TotalCount} dòng" : "",
+        };
 }
