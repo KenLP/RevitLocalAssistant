@@ -36,6 +36,13 @@ public sealed partial class ChatViewModel : ObservableObject
 
     public bool HasPending => PendingPreview is not null;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ContextWarning))]
+    private int _contextUsagePercent;
+
+    /// <summary>True at ≥85% — surfaced as a warning so the user can 🗑 Xóa.</summary>
+    public bool ContextWarning => ContextUsagePercent >= 85;
+
     public ChatViewModel(IChatService chat)
     {
         _chat = chat ?? throw new ArgumentNullException(nameof(chat));
@@ -123,6 +130,7 @@ public sealed partial class ChatViewModel : ObservableObject
         Messages.Clear();
         PendingPreview = null;
         InputText = string.Empty;
+        ContextUsagePercent = 0;
     }
 
     // ── Shared ───────────────────────────────────────────────────────────────
@@ -135,5 +143,6 @@ public sealed partial class ChatViewModel : ObservableObject
                 : ChatMessageVm.FromAssistant(reply.Text));
 
         PendingPreview = turn.Pending;
+        ContextUsagePercent = (int)System.Math.Round(turn.ContextUsage * 100);
     }
 }

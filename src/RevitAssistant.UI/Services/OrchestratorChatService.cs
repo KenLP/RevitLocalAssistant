@@ -35,23 +35,36 @@ public sealed class OrchestratorChatService : IChatService
     private readonly IReadOnlyList<ToolDefinition> _tools;
     private readonly string? _modelSchemaJson;
 
+    private readonly int _contextTokens;
+    private readonly int _trimCeiling;    // start trimming above this
+    private readonly int _trimTarget;     // trim down to this
+
     private readonly List<ChatMessage> _conversation = new();
     private ToolCall? _pendingWrite;
 
-    public OrchestratorChatService(ILlmClient llm, IRevitBridge revit, string? modelSchemaJson = null)
+    public OrchestratorChatService(
+        ILlmClient llm, IRevitBridge revit, string? modelSchemaJson = null, int contextTokens = 8192)
     {
         _llm = llm ?? throw new ArgumentNullException(nameof(llm));
         _revit = revit ?? throw new ArgumentNullException(nameof(revit));
         _modelSchemaJson = modelSchemaJson;
         _tools = ToolSpecAdapter.BuildToolSurface();
+        _contextTokens = contextTokens > 0 ? contextTokens : 8192;
+        _trimCeiling = (int)(_contextTokens * 0.90);   // never feed the model more than this
+        _trimTarget = (int)(_contextTokens * 0.65);    // after trimming, aim for this
     }
+
+    /// <summary>Estimated context fill (0..1) of the current conversation.</summary>
+    private double CurrentUsage() =>
+        Math.Min(1.0, (double)ContextEstimator.Estimate(_conversation) / _contextTokens);
 
     public async Task<ChatTurn> SendAsync(string userInput, CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct).ConfigureAwait(false);
         _conversation.Add(ChatMessage.User(userInput));
         _pendingWrite = null;
-        return await RunLoopAsync(ct).ConfigureAwait(false);
+        var turn = await RunLoopAsync(ct).ConfigureAwait(false);
+        return turn with { ContextUsage = CurrentUsage() };
     }
 
     /// <summary>Clear the conversation (and any pending write) — the "new chat" action.</summary>
@@ -107,7 +120,7 @@ public sealed class OrchestratorChatService : IChatService
 
         var tail = await RunLoopAsync(ct).ConfigureAwait(false);
         replies.AddRange(tail.Replies);
-        return new ChatTurn(replies, tail.Pending);
+        return new ChatTurn(replies, tail.Pending, CurrentUsage());
     }
 
     public void CancelPending()
@@ -127,6 +140,10 @@ public sealed class OrchestratorChatService : IChatService
 
         for (var iter = 0; iter < MaxIterations; iter++)
         {
+            // Slide the window so a long conversation never overflows the model's
+            // context (which would silently drop the system prompt → wrong behaviour).
+            ConversationTrimmer.TrimToFit(_conversation, _trimCeiling, _trimTarget);
+
             ChatResponse resp;
             try
             {

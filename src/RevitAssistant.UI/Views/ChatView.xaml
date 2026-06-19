@@ -83,9 +83,35 @@
                     <TextBlock Text="Tiếng Việt · English · Qwen2.5" FontSize="10" Opacity="0.7"
                                Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
                 </StackPanel>
-                <Button Grid.Column="2" Content="🗑 Xóa" Command="{Binding ResetCommand}"
-                        VerticalAlignment="Center" Padding="8,3" FontSize="11"
-                        ToolTip="Xóa hội thoại, bắt đầu phiên mới" />
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock VerticalAlignment="Center" Margin="0,0,8,0" FontSize="11"
+                               Text="{Binding ContextUsagePercent, StringFormat='Ngữ cảnh {0}%'}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground"
+                                        Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+                                <Setter Property="Opacity" Value="0.6" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ContextUsagePercent}" Value="0">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding ContextWarning}" Value="True">
+                                        <Setter Property="Foreground" Value="#D97706" />
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                        <Setter Property="ToolTip"
+                                                Value="Ngữ cảnh sắp đầy — hội thoại cũ đang được rút gọn. Nên bấm 🗑 Xóa để bắt đầu phiên mới." />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="⚠" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12"
+                               Foreground="#D97706"
+                               Visibility="{Binding ContextWarning, Converter={StaticResource BoolToVis}}" />
+                    <Button Content="🗑 Xóa" Command="{Binding ResetCommand}" Padding="8,3" FontSize="11"
+                            ToolTip="Xóa hội thoại, bắt đầu phiên mới" />
+                </StackPanel>
             </Grid>
         </Border>
 

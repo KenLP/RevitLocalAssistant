@@ -86,7 +86,7 @@ public sealed class App : IExternalApplication
 
         var llm = new OllamaClient(baseUrl, model, numCtx);
         var bridge = new RevitBridge();
-        var chat = new OrchestratorChatService(llm, bridge);
+        var chat = new OrchestratorChatService(llm, bridge, modelSchemaJson: null, contextTokens: numCtx);
 
         var view = new ChatView { DataContext = new ChatViewModel(chat) };
         application.RegisterDockablePane(PaneId, "Trợ lý Revit", new AssistantPaneProvider(view));

@@ -27,10 +27,13 @@ public interface IChatService
 }
 
 /// <summary>
-/// The result of one turn: bubbles to append, plus an optional pending change
-/// that requires the user's confirmation before it commits.
+/// The result of one turn: bubbles to append, an optional pending change that
+/// requires confirmation, and the estimated context fill (0..1) after the turn.
 /// </summary>
-public sealed record ChatTurn(IReadOnlyList<ChatReply> Replies, ChangePreview? Pending = null);
+public sealed record ChatTurn(
+    IReadOnlyList<ChatReply> Replies,
+    ChangePreview? Pending = null,
+    double ContextUsage = 0);
 
 /// <summary>One assistant bubble. <see cref="IsError"/> renders as an error bubble.</summary>
 public readonly record struct ChatReply(string Text, bool IsError = false);
