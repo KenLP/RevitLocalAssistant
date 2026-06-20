@@ -19,7 +19,18 @@ public sealed partial class ChatViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]
+    [NotifyPropertyChangedFor(nameof(ShowImportHint))]
     private string _inputText = string.Empty;
+
+    private static readonly string[] _importKeywords =
+    {
+        "upload", "tải file", "tải lên", "úp lên", "úp file",
+        "nhập file", "import file", "nhập dữ liệu", "đính kèm", "attach",
+        "file excel", "file csv", ".xlsx", ".csv",
+    };
+
+    public bool ShowImportHint =>
+        _importKeywords.Any(k => InputText.Contains(k, StringComparison.OrdinalIgnoreCase));
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SendCommand))]

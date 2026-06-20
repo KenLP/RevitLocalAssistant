@@ -48,3 +48,5 @@ desktop.ini
 ## Inno Setup temp
 installer/Output/
 installer/inno/*.iss.bak
+revit_export*.csv
+*.csv
