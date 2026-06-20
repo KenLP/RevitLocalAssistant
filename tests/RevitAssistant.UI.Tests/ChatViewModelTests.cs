@@ -28,6 +28,8 @@ public sealed class ChatViewModelTests
         }
         public Task<ChatTurn> UndoAsync(CancellationToken ct = default)
             => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
+        public ChatTurn IngestImport(ImportedTable table)
+            => new(new[] { new ChatReply($"Đã nhận {table.FileName}") });
         public void CancelPending() => CancelCount++;
         public int ResetCount { get; private set; }
         public void Reset() => ResetCount++;
@@ -42,6 +44,8 @@ public sealed class ChatViewModelTests
             => throw new InvalidOperationException("boom");
         public Task<ChatTurn> UndoAsync(CancellationToken ct = default)
             => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
+        public ChatTurn IngestImport(ImportedTable table)
+            => new(System.Array.Empty<ChatReply>());
         public void CancelPending() { }
         public void Reset() { }
         public string SnapshotContext() => "";
@@ -54,6 +58,8 @@ public sealed class ChatViewModelTests
         public Task<ChatTurn> SendAsync(string userInput, CancellationToken ct = default) => Gate.Task;
         public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default) => Gate.Task;
         public Task<ChatTurn> UndoAsync(CancellationToken ct = default) => Gate.Task;
+        public ChatTurn IngestImport(ImportedTable table)
+            => new(System.Array.Empty<ChatReply>());
         public void CancelPending() { }
         public void Reset() { }
         public string SnapshotContext() => "";

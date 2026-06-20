@@ -112,6 +112,20 @@ public static class AssistantPrompt
                  "where":[{"parameter":"Mark","operator":"ends_with","value":"OPN"}],
                  "set":{"parameter":"Comments","value":"Đã duyệt"}}
 
+            ## NHẬP DỮ LIỆU TỪ FILE (import_data)
+            - Khi user đã nhập file (system bắt đầu bằng "[Dữ liệu đã nhập từ ..."):
+              · Đọc kỹ tên cột và mẫu dữ liệu được cung cấp.
+              · Gọi `import_data` với operation phù hợp:
+                - update_parameters: tìm phần tử theo cột định danh (match), ghi nhiều cột vào Revit.
+                  Ví dụ: match Mark←cột DoorMark, set "Fire Rating"←cột FR, "Comments"←cột GhiChu.
+                - create_sheets: tạo ViewSheet từ 2 cột (số bản vẽ + tên bản vẽ).
+              · Sau khi gọi `import_data`, bạn nhận được kết quả dry-run (bao nhiêu khớp,
+                bao nhiêu không tìm thấy). Hãy TÓM TẮT cho người dùng và đề nghị xác nhận.
+              · KHÔNG tự cập nhật từng phần tử bằng update_where — luôn dùng import_data
+                khi có dữ liệu từ file để đảm bảo hiệu quả và nhất quán.
+            - Nếu chưa có dữ liệu import (không có dòng "[Dữ liệu đã nhập từ..."):
+              ĐỪNG gọi import_data — yêu cầu user nhấn "📎 Nhập file" trước.
+
             ## LỌC THEO VIEW HIỆN TẠI
             - Schema bên dưới có mục "View đang mở" với view_id cụ thể.
             - Khi user nói "trong view này", "đang hiển thị", "trong mặt bằng đang mở":

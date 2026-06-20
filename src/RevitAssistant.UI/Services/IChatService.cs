@@ -33,6 +33,12 @@ public interface IChatService
     /// update_where. Only valid when the previous <see cref="ChatTurn.CanUndo"/> was true.
     /// </summary>
     Task<ChatTurn> UndoAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Register an imported spreadsheet so the next user message can reference it.
+    /// Returns a preview turn (table bubble + prompt hint) immediately — no Revit call.
+    /// </summary>
+    ChatTurn IngestImport(ImportedTable table);
 }
 
 /// <summary>

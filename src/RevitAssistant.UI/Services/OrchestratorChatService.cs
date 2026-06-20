@@ -45,6 +45,8 @@ public sealed class OrchestratorChatService : IChatService
     private readonly List<ResultTable> _turnTables = new();
     private ToolCall? _pendingWrite;
     private UndoPayload? _lastUndo;
+    private ImportedTable? _pendingImport;
+    private ImportPending? _pendingImportCommit;
 
     // Stores the before-values of a successful update_where for a one-shot undo.
     private sealed record UndoPayload(
@@ -70,12 +72,46 @@ public sealed class OrchestratorChatService : IChatService
     public async Task<ChatTurn> SendAsync(string userInput, CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct).ConfigureAwait(false);
-        _conversation.Add(ChatMessage.User(userInput));
+
+        // If a table is waiting, inject its summary so the LLM knows what to map.
+        var content = userInput;
+        if (_pendingImport is { } imp)
+            content = BuildImportContext(imp) + "\n---\n" + userInput;
+
+        _conversation.Add(ChatMessage.User(content));
         _pendingWrite = null;
         _lastUndo = null;           // new turn invalidates old undo
         _turnTables.Clear();
         var turn = await RunLoopAsync(ct).ConfigureAwait(false);
         return turn with { ContextUsage = CurrentUsage(), Tables = _turnTables.ToList() };
+    }
+
+    private static string BuildImportContext(ImportedTable table)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("[Dữ liệu đã nhập từ \"");
+        sb.Append(table.FileName);
+        sb.Append("\" — ");
+        sb.Append(table.TotalRowCount);
+        sb.Append(" dòng, cột: ");
+        sb.AppendLine(string.Join(", ", table.Columns));
+        sb.AppendLine("Mẫu 5 dòng đầu:");
+        sb.AppendLine(string.Join(" | ", table.Columns));
+        foreach (var row in table.Rows.Take(5))
+            sb.AppendLine(string.Join(" | ", row));
+        sb.Append("]");
+        return sb.ToString();
+    }
+
+    public ChatTurn IngestImport(ImportedTable table)
+    {
+        _pendingImport = table;
+        var preview = table.Rows.Take(10).Select(r => r.ToList() as IReadOnlyList<string>).ToList();
+        var resultTable = new ResultTable(table.Columns, preview, table.TotalRowCount,
+            table.TotalRowCount > 10);
+        var summary = $"Đã đọc **{table.FileName}** — {table.TotalRowCount} dòng, {table.Columns.Count} cột. " +
+            "Mô tả bạn muốn làm gì với dữ liệu này.";
+        return new ChatTurn(new[] { new ChatReply(summary) }, Tables: new[] { resultTable });
     }
 
     /// <summary>Clear the conversation (and any pending write) — the "new chat" action.</summary>
@@ -85,6 +121,8 @@ public sealed class OrchestratorChatService : IChatService
         _levelElev.Clear();
         _pendingWrite = null;
         _lastUndo = null;
+        _pendingImport = null;
+        _pendingImportCommit = null;
     }
 
     /// <summary>Compact snapshot of the recent backend conversation (for feedback logs).</summary>
@@ -266,6 +304,9 @@ public sealed class OrchestratorChatService : IChatService
 
     public async Task<ChatTurn> ConfirmAsync(CancellationToken ct = default)
     {
+        if (_pendingImportCommit is not null)
+            return await CommitImportAsync(ct).ConfigureAwait(false);
+
         if (_pendingWrite is null)
             return new ChatTurn(new[] { new ChatReply("Không có thay đổi nào đang chờ xác nhận.") });
 
@@ -298,8 +339,31 @@ public sealed class OrchestratorChatService : IChatService
         return new ChatTurn(replies, tail.Pending, CurrentUsage(), _turnTables.ToList(), canUndo);
     }
 
+    private async Task<ChatTurn> CommitImportAsync(CancellationToken ct)
+    {
+        var pending = _pendingImportCommit!;
+        _pendingImportCommit = null;
+        _turnTables.Clear();
+
+        var result = await ImportExecutor.CommitAsync(_revit, pending, ct).ConfigureAwait(false);
+
+        if (result.Error is not null)
+            return new ChatTurn(new[] { new ChatReply($"❌ Lỗi khi nhập: {result.Error}", IsError: true) });
+
+        var msg = result.Failed == 0
+            ? $"✅ Đã nhập thành công {result.Applied} phần tử."
+            : $"⚠️ Đã nhập {result.Applied} phần tử. {result.Failed} lỗi.";
+        return new ChatTurn(new[] { new ChatReply(msg) },
+            ContextUsage: CurrentUsage(), Tables: _turnTables.ToList());
+    }
+
     public void CancelPending()
     {
+        if (_pendingImportCommit is not null)
+        {
+            _pendingImportCommit = null;
+            return;
+        }
         if (_pendingWrite is null) return;
         // Answer the dangling tool_call so the conversation stays well-formed.
         AppendToolResult(_pendingWrite,
@@ -383,6 +447,143 @@ public sealed class OrchestratorChatService : IChatService
         }
 
         return changes.Count > 0 ? new UndoPayload(paramName!, changes) : null;
+    }
+
+    // ── Import handling ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Handle the LLM's import_data tool call. Parses the mapping spec, runs a
+    /// dry-run, and returns a <see cref="ChangePreview"/> for the confirm/cancel flow.
+    /// Returns null if an error was already fed back to the LLM (and the loop should continue).
+    /// </summary>
+    private async Task<ChangePreview?> HandleImportDataAsync(ToolCall tc, CancellationToken ct)
+    {
+        if (_pendingImport is null)
+        {
+            AppendToolResult(tc, JsonResultError("no_data",
+                "Chưa có dữ liệu nhập. Người dùng phải nhấn '📎 Nhập file' trước."));
+            return null;
+        }
+
+        ImportSpec? spec;
+        try { spec = ParseImportSpec(tc); }
+        catch (Exception ex)
+        {
+            AppendToolResult(tc, JsonResultError("bad_spec", ex.Message));
+            return null;
+        }
+
+        var dryRun = await ImportExecutor.DryRunAsync(_revit, _pendingImport, spec, ct)
+            .ConfigureAwait(false);
+
+        if (dryRun.HasError)
+        {
+            AppendToolResult(tc, JsonResultError("dry_run_failed", dryRun.Error!));
+            return null;
+        }
+
+        // Feed a summary back to the LLM so it can explain to the user.
+        var dryJson = BuildImportDryRunJson(dryRun);
+        AppendToolResult(tc, JsonResultOk(dryJson));
+
+        // Store for confirm
+        _pendingImportCommit = new ImportPending(_pendingImport, spec, dryRun);
+        _pendingImport = null;   // consumed — cleared so repeat calls don't stack
+
+        return BuildImportPreview(dryRun, _pendingImportCommit.Table);
+    }
+
+    private static ImportSpec ParseImportSpec(ToolCall tc)
+    {
+        var a = tc.ParseArguments();
+        var op = a["operation"]?.GetValue<string>()
+            ?? throw new InvalidOperationException("import_data cần 'operation'.");
+
+        if (string.Equals(op, "create_sheets", StringComparison.OrdinalIgnoreCase))
+        {
+            var numCol = a["numberColumn"]?.GetValue<string>()
+                ?? throw new InvalidOperationException("create_sheets cần 'numberColumn'.");
+            var nameCol = a["nameColumn"]?.GetValue<string>()
+                ?? throw new InvalidOperationException("create_sheets cần 'nameColumn'.");
+            return new CreateSheetsSpec(numCol, nameCol);
+        }
+
+        // update_parameters
+        var cat = a["category"]?.GetValue<string>()
+            ?? throw new InvalidOperationException("update_parameters cần 'category'.");
+        var match = a["match"] as JsonObject
+            ?? throw new InvalidOperationException("update_parameters cần 'match'.");
+        var matchCol = match["column"]?.GetValue<string>()
+            ?? throw new InvalidOperationException("match cần 'column'.");
+        var matchParam = match["param"]?.GetValue<string>()
+            ?? throw new InvalidOperationException("match cần 'param'.");
+
+        var sets = new List<ColParamPair>();
+        if (a["set"] is JsonArray setArr)
+        {
+            foreach (var s in setArr.OfType<JsonObject>())
+            {
+                var col = s["column"]?.GetValue<string>();
+                var param = s["param"]?.GetValue<string>();
+                if (!string.IsNullOrEmpty(col) && !string.IsNullOrEmpty(param))
+                    sets.Add(new ColParamPair(col!, param!));
+            }
+        }
+        if (sets.Count == 0)
+            throw new InvalidOperationException("update_parameters cần ít nhất một mục trong 'set'.");
+
+        return new UpdateParamsSpec(cat, new ColParamPair(matchCol, matchParam), sets);
+    }
+
+    private static JsonObject BuildImportDryRunJson(ImportDryRunResult d) =>
+        d.Spec is UpdateParamsSpec
+            ? new JsonObject
+            {
+                ["matchedRows"] = d.MatchedRows.Count,
+                ["unmatchedRows"] = d.UnmatchedRows.Count,
+                ["totalRevitElements"] = d.TotalRevitElements,
+            }
+            : new JsonObject
+            {
+                ["sheetsToCreate"] = d.SheetsToCreate.Count,
+                ["sheetsSkipped"] = d.SheetsSkipped.Count,
+            };
+
+    private static ChangePreview BuildImportPreview(ImportDryRunResult d, ImportedTable table)
+    {
+        if (d.Spec is UpdateParamsSpec up)
+        {
+            var title = $"Nhập từ {table.FileName}";
+            var summary = $"Khớp {d.MatchedRows.Count}/{table.TotalRowCount} dòng với '{up.Match.Param}'. " +
+                (d.UnmatchedRows.Count > 0 ? $"{d.UnmatchedRows.Count} dòng không tìm thấy." : "");
+            var rows = d.MatchedRows.Take(20).Select(m =>
+            {
+                var sets = up.Sets.Select(s =>
+                {
+                    var ci = IndexOfCol(m.Columns, s.Column);
+                    var v = ci >= 0 && ci < m.Row.Count ? m.Row[ci] : "?";
+                    return $"{s.Param}={v}";
+                });
+                return new PreviewRow($"Dòng {m.RowNum} [{m.MatchValue}]",
+                    string.Join(", ", sets));
+            }).ToList();
+            if (d.UnmatchedRows.Count > 0 && rows.Count < 20)
+                foreach (var (rn, mv) in d.UnmatchedRows.Take(5))
+                    rows.Add(new PreviewRow($"Dòng {rn} [{mv}]",
+                        "⚠ Không tìm thấy trong Revit", IsFailure: true));
+            return new ChangePreview(title, summary, rows, d.MatchedRows.Count);
+        }
+        else
+        {
+            var cs = (CreateSheetsSpec)d.Spec;
+            var title = $"Tạo bản vẽ từ {table.FileName}";
+            var summary = $"Sẽ tạo {d.SheetsToCreate.Count} bản vẽ mới. " +
+                (d.SheetsSkipped.Count > 0 ? $"{d.SheetsSkipped.Count} đã tồn tại (bỏ qua)." : "");
+            var rows = d.SheetsToCreate.Take(20)
+                .Select(t => new PreviewRow(t.Number, t.Name))
+                .ToList();
+            return new ChangePreview(title, summary, rows, d.SheetsToCreate.Count);
+        }
     }
 
     // ── Core loop ────────────────────────────────────────────────────────────
@@ -469,6 +670,18 @@ public sealed class OrchestratorChatService : IChatService
                     // correct numeric/text matching), not via Core's limited filters.
                     var found = await FindElementsAsync(tc, ct).ConfigureAwait(false);
                     AppendToolResult(tc, found);
+                    continue;
+                }
+
+                if (tc.FunctionName == "import_data")
+                {
+                    var importResult = await HandleImportDataAsync(tc, ct).ConfigureAwait(false);
+                    if (importResult is not null)
+                    {
+                        DeferRemaining(calls, k + 1);
+                        return new ChatTurn(replies, importResult);
+                    }
+                    // Error was fed back already via AppendToolResult; continue loop.
                     continue;
                 }
 
@@ -688,6 +901,14 @@ public sealed class OrchestratorChatService : IChatService
         try { return n.GetValue<int>(); } catch { }
         try { return (int)n.GetValue<long>(); } catch { }
         return null;
+    }
+
+    private static int IndexOfCol(IReadOnlyList<string> cols, string name)
+    {
+        for (var i = 0; i < cols.Count; i++)
+            if (string.Equals(cols[i], name, StringComparison.OrdinalIgnoreCase))
+                return i;
+        return -1;
     }
 
     private static long? TryGetLong(JsonNode? n)

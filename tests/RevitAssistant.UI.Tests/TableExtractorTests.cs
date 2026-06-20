@@ -85,6 +85,8 @@ public sealed class TableExtractorTests
             => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
         public Task<ChatTurn> UndoAsync(CancellationToken ct = default)
             => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
+        public ChatTurn IngestImport(ImportedTable table)
+            => new(System.Array.Empty<ChatReply>());
         public void CancelPending() { }
         public void Reset() { }
         public string SnapshotContext() => "";

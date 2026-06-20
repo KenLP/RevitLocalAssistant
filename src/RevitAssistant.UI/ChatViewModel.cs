@@ -152,6 +152,30 @@ public sealed partial class ChatViewModel : ObservableObject
         }
     }
 
+    // ── Import file ──────────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private void ImportFile()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Chọn file để nhập vào Revit",
+            Filter = "Excel / CSV (*.xlsx;*.csv)|*.xlsx;*.csv|Tất cả tệp (*.*)|*.*",
+            Multiselect = false,
+        };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            var table = CsvXlsxReader.Read(dialog.FileName);
+            var turn = _chat.IngestImport(table);
+            ApplyTurn(turn);
+        }
+        catch (Exception ex)
+        {
+            Messages.Add(ChatMessageVm.FromError($"Không đọc được file: {ex.Message}"));
+        }
+    }
+
     // ── New chat ─────────────────────────────────────────────────────────────
 
     private bool CanReset() => !IsBusy;

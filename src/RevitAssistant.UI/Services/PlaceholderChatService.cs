@@ -27,4 +27,7 @@ public sealed class PlaceholderChatService : IChatService
 
     public Task<ChatTurn> UndoAsync(CancellationToken ct = default) =>
         Task.FromResult(new ChatTurn(Array.Empty<ChatReply>()));
+
+    public ChatTurn IngestImport(ImportedTable table) =>
+        new(new[] { new ChatReply($"[Offline] Đã nhận file: {table.FileName} ({table.TotalRowCount} dòng).") });
 }

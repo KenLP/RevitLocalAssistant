@@ -355,6 +355,60 @@ public static class ToolSpecAdapter
                   "required": ["question"]
                 }
                 """)),
+
+            // ── Spreadsheet import ──────────────────────────────────────────
+            new ToolDefinition(
+                "import_data",
+                "Declare how to map an imported spreadsheet to Revit data. " +
+                "Call this AFTER the user describes what they want to do with the imported file. " +
+                "Returns a dry-run preview; the user then confirms before any writes happen. " +
+                "Hai loại thao tác: update_parameters (cập nhật tham số theo cột) và create_sheets (tạo bản vẽ).",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "operation": {
+                      "type": "string",
+                      "enum": ["update_parameters", "create_sheets"],
+                      "description": "update_parameters: tìm phần tử theo cột khớp, rồi ghi các cột khác vào tham số. create_sheets: tạo ViewSheet cho mỗi dòng."
+                    },
+                    "category": {
+                      "type": "string",
+                      "description": "BuiltInCategory (for update_parameters), e.g. OST_Doors, OST_Walls, OST_Rooms."
+                    },
+                    "match": {
+                      "type": "object",
+                      "description": "For update_parameters: which spreadsheet column identifies the Revit element.",
+                      "properties": {
+                        "column": { "type": "string", "description": "Column name in the spreadsheet (exact header)." },
+                        "param":  { "type": "string", "description": "Exact Revit parameter name to match against, e.g. 'Mark'." }
+                      },
+                      "required": ["column", "param"]
+                    },
+                    "set": {
+                      "type": "array",
+                      "description": "For update_parameters: columns to write into Revit parameters.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "column": { "type": "string", "description": "Column name in the spreadsheet." },
+                          "param":  { "type": "string", "description": "Exact Revit parameter name to write." }
+                        },
+                        "required": ["column", "param"]
+                      }
+                    },
+                    "numberColumn": {
+                      "type": "string",
+                      "description": "For create_sheets: column with the sheet number (e.g. 'A-001')."
+                    },
+                    "nameColumn": {
+                      "type": "string",
+                      "description": "For create_sheets: column with the sheet name / title."
+                    }
+                  },
+                  "required": ["operation"]
+                }
+                """)),
         ];
     }
 
