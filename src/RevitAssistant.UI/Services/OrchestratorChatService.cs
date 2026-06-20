@@ -154,9 +154,21 @@ public sealed class OrchestratorChatService : IChatService
         }
     }
 
+    // Architecturally important categories whose params the model must know regardless
+    // of element count. Populous but less critical categories fill remaining slots.
+    private static readonly string[] PriorityCats =
+    {
+        "OST_Walls", "OST_Floors", "OST_Doors", "OST_Windows",
+        "OST_Rooms", "OST_StructuralColumns", "OST_Ceilings", "OST_Stairs",
+    };
+
+    private const int MaxSampleCats = 5;
+
     /// <summary>
-    /// For the top 3 categories (by instance count), fetch 1 element and read its
-    /// parameter names so the model knows exact, project-specific param spellings.
+    /// Samples real parameter names per category. Priority categories (Wall, Floor,
+    /// Door, Room…) are always included first because they matter most for BIM
+    /// queries regardless of element count. Remaining slots fill from the most
+    /// populous categories that are not already covered.
     /// Wrapped in try/catch per category so a failure on one doesn't abort the rest.
     /// </summary>
     private async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> SampleParamsAsync(
@@ -166,17 +178,28 @@ public sealed class OrchestratorChatService : IChatService
 
         if (catsEnv?["data"]?["categories"] is not JsonArray arr) return result;
 
-        var topCats = arr
+        // Build lookup: BIC → count (only categories present in this model)
+        var available = arr
             .OfType<JsonObject>()
             .Select(o => (
                 Bic: o["builtInCategory"]?.GetValue<string>(),
                 Count: TryGetInt(o["instanceCount"]) ?? 0))
             .Where(x => !string.IsNullOrEmpty(x.Bic) && x.Count > 0)
-            .OrderByDescending(x => x.Count)
-            .Take(3)
+            .ToDictionary(x => x.Bic!, x => x.Count, StringComparer.OrdinalIgnoreCase);
+
+        // 1. Priority categories that exist in this model (in fixed order)
+        var toSample = PriorityCats
+            .Where(available.ContainsKey)
             .ToList();
 
-        foreach (var (bic, _) in topCats)
+        // 2. Fill remaining slots from most populous non-priority categories
+        var extras = available.Keys
+            .Where(k => !toSample.Contains(k, StringComparer.OrdinalIgnoreCase))
+            .OrderByDescending(k => available[k])
+            .Take(MaxSampleCats - toSample.Count);
+        toSample.AddRange(extras);
+
+        foreach (var bic in toSample.Take(MaxSampleCats))
         {
             try
             {
