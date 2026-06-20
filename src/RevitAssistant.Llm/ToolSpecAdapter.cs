@@ -196,7 +196,12 @@ public static class ToolSpecAdapter
                     "order": {
                       "type": "string",
                       "enum": ["asc", "desc"],
-                      "description": "When groupBy='Level': asc = low→high by elevation (default), desc = high→low."
+                      "description": "Sort direction. With sortBy='level': asc=thấp→cao, desc=cao→thấp. With sortBy='value': asc=ít→nhiều, desc=nhiều→ít."
+                    },
+                    "sortBy": {
+                      "type": "string",
+                      "enum": ["level", "value"],
+                      "description": "Khi groupBy='Level': 'level' (mặc định) sắp theo cao độ tầng; 'value' sắp theo số lượng/tổng. Dùng 'value' khi user muốn 'tầng có nhiều nhất/ít nhất'."
                     },
                     "filters": {
                       "type": "array",
@@ -250,7 +255,12 @@ public static class ToolSpecAdapter
                     "order": {
                       "type": "string",
                       "enum": ["asc", "desc"],
-                      "description": "When groupBy='Level': asc = low→high by elevation (default), desc = high→low."
+                      "description": "Sort direction. With sortBy='level': asc=thấp→cao, desc=cao→thấp. With sortBy='value': asc=nhỏ→lớn, desc=lớn→nhỏ."
+                    },
+                    "sortBy": {
+                      "type": "string",
+                      "enum": ["level", "value"],
+                      "description": "Khi groupBy='Level': 'level' (mặc định) sắp theo cao độ tầng; 'value' sắp theo tổng/trung bình. Dùng 'value' khi user muốn 'tầng có tổng lớn nhất/nhỏ nhất'."
                     },
                     "top": {
                       "type": "integer",

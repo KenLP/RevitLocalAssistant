@@ -33,7 +33,8 @@ public static class Aggregator
     public static JsonObject Summarize(
         JsonObject findEnvelope, string? groupBy,
         IReadOnlyDictionary<string, double>? levelOrder = null,
-        bool descending = false)
+        bool descending = false,
+        bool sortByValue = false)
     {
         if (!IsOk(findEnvelope)) return findEnvelope;
 
@@ -56,13 +57,17 @@ public static class Aggregator
             counts[key] = counts.GetValueOrDefault(key) + 1;
         }
 
-        // When grouping by Level, order by real elevation (low→high, or high→low when
-        // descending); else by count desc.
-        var ordered = (levelOrder != null
+        // sortByValue=true → order by count (desc/asc).
+        // Otherwise: by Level elevation when levelOrder available; else by count desc.
+        var ordered = (sortByValue
                 ? (descending
-                    ? counts.OrderByDescending(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key)
-                    : counts.OrderBy(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key))
-                : counts.OrderByDescending(k => k.Value).ThenBy(k => k.Key))
+                    ? counts.OrderByDescending(k => k.Value).ThenBy(k => k.Key)
+                    : counts.OrderBy(k => k.Value).ThenBy(k => k.Key))
+                : levelOrder != null
+                    ? (descending
+                        ? counts.OrderByDescending(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key)
+                        : counts.OrderBy(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key))
+                    : counts.OrderByDescending(k => k.Value).ThenBy(k => k.Key))
             .ToList();
         var groups = new JsonArray();
         foreach (var kv in ordered.Take(MaxItems))
@@ -95,7 +100,8 @@ public static class Aggregator
         int top = 0,
         string? groupBy = null,
         IReadOnlyDictionary<string, double>? levelOrder = null,
-        bool descending = false)
+        bool descending = false,
+        bool sortByValue = false)
     {
         if (!IsOk(findEnvelope)) return findEnvelope;
 
@@ -151,11 +157,17 @@ public static class Aggregator
 
         if (!string.IsNullOrWhiteSpace(groupBy))
         {
-            var ordered = (levelOrder != null
+            // sortByValue=true → order by aggregated sum (desc/asc).
+            // Otherwise: by Level elevation when levelOrder available; else by sum desc.
+            var ordered = (sortByValue
                     ? (descending
-                        ? groups.OrderByDescending(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key)
-                        : groups.OrderBy(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key))
-                    : groups.OrderByDescending(k => k.Value.Sum))
+                        ? groups.OrderByDescending(k => k.Value.Sum).ThenBy(k => k.Key)
+                        : groups.OrderBy(k => k.Value.Sum).ThenBy(k => k.Key))
+                    : levelOrder != null
+                        ? (descending
+                            ? groups.OrderByDescending(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key)
+                            : groups.OrderBy(k => Elev(levelOrder, k.Key)).ThenBy(k => k.Key))
+                        : groups.OrderByDescending(k => k.Value.Sum))
                 .ToList();
             var garr = new JsonArray();
             foreach (var kv in ordered.Take(MaxItems))

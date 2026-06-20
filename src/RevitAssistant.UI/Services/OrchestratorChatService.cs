@@ -840,15 +840,19 @@ public sealed class OrchestratorChatService : IChatService
         var groupBy = args["groupBy"]?.GetValue<string>();
         var extra = string.IsNullOrWhiteSpace(groupBy) ? Array.Empty<string>() : new[] { groupBy! };
         var viewId = TryGetLong(args["view_id"]);
+        var sortByValue = IsSortByValue(args);
 
         var env = await FetchFilteredAsync(
             category!, args["filters"] as JsonArray, extra, ct, viewId)
             .ConfigureAwait(false);
-        return Aggregator.Summarize(env, groupBy, LevelOrderFor(groupBy), IsDescending(args));
+        return Aggregator.Summarize(env, groupBy, LevelOrderFor(groupBy), IsDescending(args), sortByValue);
     }
 
     private static bool IsDescending(JsonObject args) =>
         string.Equals(args["order"]?.GetValue<string>(), "desc", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSortByValue(JsonObject args) =>
+        string.Equals(args["sortBy"]?.GetValue<string>(), "value", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// aggregate_elements: sum/min/max/avg of a numeric parameter over rich-filtered
@@ -874,6 +878,7 @@ public sealed class OrchestratorChatService : IChatService
         var top = Math.Clamp(TryGetInt(args["top"]) ?? 0, 0, 40);
         var (factor, label) = Aggregator.ResolveUnit(unit, parameter!);
         var viewId = TryGetLong(args["view_id"]);
+        var sortByValue = IsSortByValue(args);
 
         var extra = new List<string> { parameter! };
         if (!string.IsNullOrWhiteSpace(groupBy)) extra.Add(groupBy!);
@@ -882,7 +887,7 @@ public sealed class OrchestratorChatService : IChatService
             category!, args["filters"] as JsonArray, extra, ct, viewId)
             .ConfigureAwait(false);
         return Aggregator.SummarizeNumeric(
-            env, parameter!, factor, label, top, groupBy, LevelOrderFor(groupBy), IsDescending(args));
+            env, parameter!, factor, label, top, groupBy, LevelOrderFor(groupBy), IsDescending(args), sortByValue);
     }
 
     private static IEnumerable<string> StringList(JsonNode? node)

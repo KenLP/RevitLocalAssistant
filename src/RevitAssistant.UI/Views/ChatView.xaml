@@ -110,9 +110,9 @@
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="🤖" FontSize="16" VerticalAlignment="Center" />
                 <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="Trợ lý Revit (Offline)" FontWeight="SemiBold"
+                    <TextBlock Text="Trợ lý Revit AI" FontWeight="SemiBold"
                                Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
-                    <TextBlock Text="Tiếng Việt · English · Qwen2.5" FontSize="10" Opacity="0.7"
+                    <TextBlock Text="Tiếng Việt · English · Ollama · Qwen2.5" FontSize="10" Opacity="0.7"
                                Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -141,9 +141,6 @@
                     <TextBlock Text="⚠" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12"
                                Foreground="#D97706"
                                Visibility="{Binding ContextWarning, Converter={StaticResource BoolToVis}}" />
-                    <Button Content="📎 Nhập file" Command="{Binding ImportFileCommand}"
-                            Padding="8,3" FontSize="11" Margin="0,0,6,0"
-                            ToolTip="Nhập dữ liệu từ file Excel hoặc CSV vào Revit" />
                     <Button Content="🗑 Xóa" Command="{Binding ResetCommand}" Padding="8,3" FontSize="11"
                             ToolTip="Xóa hội thoại, bắt đầu phiên mới" />
                 </StackPanel>
@@ -334,10 +331,15 @@
                 Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
             <Grid>
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBox Grid.Column="0" x:Name="InputBox"
+                <Button Grid.Column="0" Content="📎" Command="{Binding ImportFileCommand}"
+                        Padding="6,4" Margin="0,0,4,0" FontSize="14"
+                        BorderThickness="0" Background="Transparent" Cursor="Hand"
+                        ToolTip="Nhập dữ liệu từ file Excel / CSV" />
+                <TextBox Grid.Column="1" x:Name="InputBox"
                          Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
                          AcceptsReturn="True" TextWrapping="Wrap"
                          MinHeight="28" MaxHeight="100"
@@ -345,7 +347,7 @@
                          VerticalContentAlignment="Center"
                          BorderThickness="0" Background="Transparent"
                          PreviewKeyDown="InputBox_PreviewKeyDown" />
-                <Button Grid.Column="1" Content="Gửi" Command="{Binding SendCommand}"
+                <Button Grid.Column="2" Content="Gửi" Command="{Binding SendCommand}"
                         MinWidth="56" Margin="4,0,0,0" Padding="8,4" />
             </Grid>
         </Border>
