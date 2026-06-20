@@ -124,7 +124,8 @@ public static class ToolSpecAdapter
                       }
                     },
                     "select": { "type": "array", "items": { "type": "string" }, "description": "Param names to return per row." },
-                    "limit": { "type": "integer", "minimum": 1, "maximum": 1000, "description": "Max rows returned; 'count' is always the true total." }
+                    "limit": { "type": "integer", "minimum": 1, "maximum": 1000, "description": "Max rows returned; 'count' is always the true total." },
+                    "view_id": { "type": "integer", "description": "Optional: restrict to elements visible in this view. Get the id from the schema section 'View đang mở' or call get_active_view." }
                   },
                   "required": ["category"]
                 }
@@ -209,7 +210,8 @@ public static class ToolSpecAdapter
                         },
                         "required": ["parameterName"]
                       }
-                    }
+                    },
+                    "view_id": { "type": "integer", "description": "Optional: restrict to elements visible in this view." }
                   },
                   "required": ["category"]
                 }
@@ -268,7 +270,8 @@ public static class ToolSpecAdapter
                         },
                         "required": ["parameterName"]
                       }
-                    }
+                    },
+                    "view_id": { "type": "integer", "description": "Optional: restrict to elements visible in this view." }
                   },
                   "required": ["category", "parameter"]
                 }

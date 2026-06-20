@@ -12,6 +12,8 @@ public sealed class FeedbackTests
             => Task.FromResult(new ChatTurn(new[] { new ChatReply("đáp án") }));
         public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default)
             => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
+        public Task<ChatTurn> UndoAsync(CancellationToken ct = default)
+            => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
         public void CancelPending() { }
         public void Reset() { }
         public string SnapshotContext() => "BACKEND-CTX";

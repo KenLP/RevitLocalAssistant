@@ -79,6 +79,36 @@ public sealed partial class ChatMessageVm : ObservableObject
         try { System.Windows.Clipboard.SetText(sb.ToString()); } catch { /* clipboard busy */ }
     }
 
+    /// <summary>Save the table to a UTF-8 CSV file via SaveFileDialog.</summary>
+    [RelayCommand]
+    private void ExportCsv()
+    {
+        if (Table is null) return;
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Xuất bảng ra CSV",
+            Filter = "CSV (*.csv)|*.csv|Tất cả tệp (*.*)|*.*",
+            DefaultExt = ".csv",
+            FileName = "revit_export",
+        };
+        if (dialog.ShowDialog() != true) return;
+        try
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(string.Join(',', Table.Columns.Select(CsvCell)));
+            foreach (var row in Table.Rows)
+                sb.AppendLine(string.Join(',', row.Select(CsvCell)));
+            System.IO.File.WriteAllText(
+                dialog.FileName, sb.ToString(), new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        }
+        catch { /* silent — user can see the file was not created */ }
+    }
+
+    private static string CsvCell(string s) =>
+        s.Contains(',') || s.Contains('"') || s.Contains('\n')
+            ? '"' + s.Replace("\"", "\"\"") + '"'
+            : s;
+
     public static ChatMessageVm FromUser(string text) =>
         new() { Kind = ChatMessageKind.User, Sender = "Bạn", Text = text };
 

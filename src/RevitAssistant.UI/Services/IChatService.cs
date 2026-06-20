@@ -27,17 +27,26 @@ public interface IChatService
 
     /// <summary>Compact snapshot of recent backend conversation — logged on thumbs-down.</summary>
     string SnapshotContext();
+
+    /// <summary>
+    /// Restore the parameter values that were overwritten by the last confirmed
+    /// update_where. Only valid when the previous <see cref="ChatTurn.CanUndo"/> was true.
+    /// </summary>
+    Task<ChatTurn> UndoAsync(CancellationToken ct = default);
 }
 
 /// <summary>
 /// The result of one turn: bubbles to append, an optional pending change that
 /// requires confirmation, and the estimated context fill (0..1) after the turn.
+/// <see cref="CanUndo"/> is true immediately after a successful update_where commit —
+/// the UI shows "Hoàn tác" while this is true.
 /// </summary>
 public sealed record ChatTurn(
     IReadOnlyList<ChatReply> Replies,
     ChangePreview? Pending = null,
     double ContextUsage = 0,
-    IReadOnlyList<ResultTable>? Tables = null);
+    IReadOnlyList<ResultTable>? Tables = null,
+    bool CanUndo = false);
 
 /// <summary>One assistant bubble. <see cref="IsError"/> renders as an error bubble.</summary>
 public readonly record struct ChatReply(string Text, bool IsError = false);

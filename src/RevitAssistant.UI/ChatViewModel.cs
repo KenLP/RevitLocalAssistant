@@ -6,7 +6,7 @@ namespace RevitAssistant.UI;
 
 /// <summary>
 /// Drives the chat panel: owns the message list, the input box, the send loop,
-/// and the confirm/cancel flow for pending model-writes.
+/// and the confirm/cancel/undo flow for pending model-writes.
 /// All Revit/Ollama work is delegated to <see cref="IChatService"/>, so this class
 /// has no Revit API dependency and is unit-testable on any thread.
 /// </summary>
@@ -26,6 +26,7 @@ public sealed partial class ChatViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ConfirmCommand))]
     [NotifyCanExecuteChangedFor(nameof(CancelCommand))]
     [NotifyCanExecuteChangedFor(nameof(ResetCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UndoCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -43,6 +44,11 @@ public sealed partial class ChatViewModel : ObservableObject
 
     /// <summary>True at ≥85% — surfaced as a warning so the user can 🗑 Xóa.</summary>
     public bool ContextWarning => ContextUsagePercent >= 85;
+
+    /// <summary>True immediately after a successful update_where commit.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(UndoCommand))]
+    private bool _hasUndo;
 
     public ChatViewModel(IChatService chat, IFeedbackSink? feedback = null)
     {
@@ -72,6 +78,7 @@ public sealed partial class ChatViewModel : ObservableObject
         Messages.Add(ChatMessageVm.FromUser(text));
         InputText = string.Empty;
         IsBusy = true;
+        HasUndo = false;
         try
         {
             var turn = await _chat.SendAsync(text).ConfigureAwait(true);
@@ -121,6 +128,30 @@ public sealed partial class ChatViewModel : ObservableObject
         Messages.Add(ChatMessageVm.FromSystem("Đã hủy thao tác."));
     }
 
+    // ── Undo last edit ───────────────────────────────────────────────────────
+
+    private bool CanUndo() => HasUndo && !IsBusy;
+
+    [RelayCommand(CanExecute = nameof(CanUndo))]
+    private async Task UndoAsync()
+    {
+        HasUndo = false;
+        IsBusy = true;
+        try
+        {
+            var turn = await _chat.UndoAsync().ConfigureAwait(true);
+            ApplyTurn(turn);
+        }
+        catch (Exception ex)
+        {
+            Messages.Add(ChatMessageVm.FromError($"Lỗi hoàn tác: {ex.Message}"));
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     // ── New chat ─────────────────────────────────────────────────────────────
 
     private bool CanReset() => !IsBusy;
@@ -133,6 +164,7 @@ public sealed partial class ChatViewModel : ObservableObject
         PendingPreview = null;
         InputText = string.Empty;
         ContextUsagePercent = 0;
+        HasUndo = false;
     }
 
     // ── Shared ───────────────────────────────────────────────────────────────
@@ -160,6 +192,7 @@ public sealed partial class ChatViewModel : ObservableObject
 
         PendingPreview = turn.Pending;
         ContextUsagePercent = (int)System.Math.Round(turn.ContextUsage * 100);
+        HasUndo = turn.CanUndo;
     }
 
     // ── Feedback ─────────────────────────────────────────────────────────────

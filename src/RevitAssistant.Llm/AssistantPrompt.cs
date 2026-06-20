@@ -112,6 +112,12 @@ public static class AssistantPrompt
                  "where":[{"parameter":"Mark","operator":"ends_with","value":"OPN"}],
                  "set":{"parameter":"Comments","value":"Đã duyệt"}}
 
+            ## LỌC THEO VIEW HIỆN TẠI
+            - Schema bên dưới có mục "View đang mở" với view_id cụ thể.
+            - Khi user nói "trong view này", "đang hiển thị", "trong mặt bằng đang mở":
+              thêm `"view_id": <id>` vào query_where / count_elements / aggregate_elements.
+            - Ví dụ: {"category":"OST_Doors","view_id":12345,"where":[...]}
+
             ## RULES
             - Dùng CHÍNH XÁC tên BuiltInCategory & tham số từ glossary bên dưới.
             - Số đo dài/diện tích ở đơn vị nội bộ (feet) trừ khi units="meters".

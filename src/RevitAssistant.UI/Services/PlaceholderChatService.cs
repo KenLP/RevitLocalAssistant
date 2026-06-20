@@ -11,7 +11,7 @@ public sealed class PlaceholderChatService : IChatService
     {
         var reply = new ChatReply(
             "✅ Bảng trợ lý hoạt động tốt.\n\n" +
-            $"Bạn vừa nhập: “{userInput}”\n\n" +
+            $"Bạn vừa nhập: \"{userInput}\"\n\n" +
             "Bộ điều phối AI offline sẽ trả lời khi Ollama đang chạy.");
         return Task.FromResult(new ChatTurn(new[] { reply }));
     }
@@ -24,4 +24,7 @@ public sealed class PlaceholderChatService : IChatService
     public void Reset() { }
 
     public string SnapshotContext() => "";
+
+    public Task<ChatTurn> UndoAsync(CancellationToken ct = default) =>
+        Task.FromResult(new ChatTurn(Array.Empty<ChatReply>()));
 }

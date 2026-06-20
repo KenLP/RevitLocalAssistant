@@ -5,19 +5,45 @@ namespace RevitAssistant.UI;
 
 /// <summary>
 /// Builds a compact, real grounding snippet from the active document:
-/// the actual level names and the categories that really have elements (with
-/// counts). Injected into the system prompt so the model uses EXACT names that
-/// exist in THIS project instead of guessing (e.g. "L5" when the level is
-/// actually "L1 - Block 35").
+/// the actual level names, the categories that really have elements, the current
+/// active view (including its ID for view_id filtering), and a sample of real
+/// parameter names per top category so the model uses EXACT names that exist in
+/// THIS project instead of guessing.
 /// </summary>
 public static class ModelSchema
 {
     private const int MaxCategories = 30;
+    private const int MaxParamsPerCategory = 25;
 
-    public static string? Build(JsonObject? levelsEnv, JsonObject? categoriesEnv)
+    public static string? Build(
+        JsonObject? levelsEnv,
+        JsonObject? categoriesEnv,
+        JsonObject? activeViewEnv = null,
+        IReadOnlyDictionary<string, IReadOnlyList<string>>? paramsByCategory = null)
     {
         var sb = new StringBuilder();
 
+        // Active view (inject early so model can reference view_id without a tool call)
+        var view = activeViewEnv?["data"] as JsonObject;
+        if (view != null)
+        {
+            var viewName = view["name"]?.GetValue<string>();
+            var viewType = view["viewType"]?.GetValue<string>();
+            var levelName = view["levelName"]?.GetValue<string>();
+            long? viewId = null;
+            if (view["id"] is JsonValue vid) { try { viewId = vid.GetValue<long>(); } catch { } }
+
+            sb.AppendLine("## View đang mở — dùng view_id để lọc chỉ phần tử trong view này:");
+            sb.Append($"  - Tên: {viewName}");
+            if (!string.IsNullOrWhiteSpace(viewType)) sb.Append($"  |  Loại: {viewType}");
+            if (!string.IsNullOrWhiteSpace(levelName)) sb.Append($"  |  Tầng: {levelName}");
+            if (viewId.HasValue) sb.Append($"  |  view_id: {viewId.Value}");
+            sb.AppendLine();
+            sb.AppendLine("  Khi user nói 'trong view này' / 'đang hiển thị': thêm view_id vào query_where / count_elements / aggregate_elements.");
+            sb.AppendLine();
+        }
+
+        // Exact level names
         var levels = ExtractNames(levelsEnv, "levels");
         if (levels.Count > 0)
         {
@@ -27,12 +53,28 @@ public static class ModelSchema
             sb.AppendLine();
         }
 
+        // Categories with counts
         var cats = ExtractCategories(categoriesEnv);
         if (cats.Count > 0)
         {
             sb.AppendLine("## Danh mục có trong model (BuiltInCategory — tên — số lượng):");
             foreach (var (bic, name, count) in cats.Take(MaxCategories))
                 sb.AppendLine($"  - {bic} — {name} — {count}");
+            sb.AppendLine();
+        }
+
+        // Per-category parameter names (sampled from real elements)
+        if (paramsByCategory is { Count: > 0 })
+        {
+            sb.AppendLine("## Tham số THỰC TẾ trong model — dùng ĐÚNG tên (có dấu cách, đúng hoa/thường):");
+            foreach (var (bic, names) in paramsByCategory)
+            {
+                var catLabel = cats.FirstOrDefault(c => c.Bic == bic);
+                var label = !string.IsNullOrEmpty(catLabel.Name) ? $"{bic} ({catLabel.Name})" : bic;
+                sb.AppendLine($"  {label}:");
+                foreach (var n in names.Take(MaxParamsPerCategory))
+                    sb.AppendLine($"    - {n}");
+            }
             sb.AppendLine();
         }
 

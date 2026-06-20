@@ -26,6 +26,8 @@ public sealed class ChatViewModelTests
             ConfirmCount++;
             return Task.FromResult(new ChatTurn(new[] { new ChatReply("đã ghi") }));
         }
+        public Task<ChatTurn> UndoAsync(CancellationToken ct = default)
+            => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
         public void CancelPending() => CancelCount++;
         public int ResetCount { get; private set; }
         public void Reset() => ResetCount++;
@@ -38,6 +40,8 @@ public sealed class ChatViewModelTests
             => throw new InvalidOperationException("boom");
         public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default)
             => throw new InvalidOperationException("boom");
+        public Task<ChatTurn> UndoAsync(CancellationToken ct = default)
+            => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
         public void CancelPending() { }
         public void Reset() { }
         public string SnapshotContext() => "";
@@ -49,6 +53,7 @@ public sealed class ChatViewModelTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<ChatTurn> SendAsync(string userInput, CancellationToken ct = default) => Gate.Task;
         public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default) => Gate.Task;
+        public Task<ChatTurn> UndoAsync(CancellationToken ct = default) => Gate.Task;
         public void CancelPending() { }
         public void Reset() { }
         public string SnapshotContext() => "";

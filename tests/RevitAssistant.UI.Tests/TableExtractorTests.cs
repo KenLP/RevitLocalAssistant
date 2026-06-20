@@ -83,6 +83,8 @@ public sealed class TableExtractorTests
             => Task.FromResult(new ChatTurn(new[] { new ChatReply("Có 2 mục:") }, null, 0, new[] { _t }));
         public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default)
             => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
+        public Task<ChatTurn> UndoAsync(CancellationToken ct = default)
+            => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
         public void CancelPending() { }
         public void Reset() { }
         public string SnapshotContext() => "";

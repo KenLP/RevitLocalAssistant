@@ -85,6 +85,8 @@ public sealed class ContextWarningVmTests
             => Task.FromResult(new ChatTurn(new[] { new ChatReply("ok") }, null, _usage));
         public Task<ChatTurn> ConfirmAsync(CancellationToken ct = default)
             => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
+        public Task<ChatTurn> UndoAsync(CancellationToken ct = default)
+            => Task.FromResult(new ChatTurn(System.Array.Empty<ChatReply>()));
         public void CancelPending() { }
         public void Reset() { }
         public string SnapshotContext() => "";

@@ -14,7 +14,8 @@ namespace RevitAssistant.UI;
 ///   …loop until the LLM returns a plain-text answer.
 ///
 /// On confirm, the write commits for real and the loop resumes so the LLM can
-/// summarise the result.
+/// summarise the result. After a successful update_where commit, <see cref="UndoAsync"/>
+/// can restore the previous parameter values.
 ///
 /// Protocol invariant: every assistant tool_call gets exactly one tool response
 /// before the next LLM call. The single pending write is the only call left
@@ -43,6 +44,12 @@ public sealed class OrchestratorChatService : IChatService
     private readonly Dictionary<string, double> _levelElev = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ResultTable> _turnTables = new();
     private ToolCall? _pendingWrite;
+    private UndoPayload? _lastUndo;
+
+    // Stores the before-values of a successful update_where for a one-shot undo.
+    private sealed record UndoPayload(
+        string SetParameter,
+        IReadOnlyList<(long Id, string? Before)> Changes);
 
     public OrchestratorChatService(
         ILlmClient llm, IRevitBridge revit, string? modelSchemaJson = null, int contextTokens = 8192)
@@ -65,6 +72,7 @@ public sealed class OrchestratorChatService : IChatService
         await EnsureInitializedAsync(ct).ConfigureAwait(false);
         _conversation.Add(ChatMessage.User(userInput));
         _pendingWrite = null;
+        _lastUndo = null;           // new turn invalidates old undo
         _turnTables.Clear();
         var turn = await RunLoopAsync(ct).ConfigureAwait(false);
         return turn with { ContextUsage = CurrentUsage(), Tables = _turnTables.ToList() };
@@ -76,6 +84,7 @@ public sealed class OrchestratorChatService : IChatService
         _conversation.Clear();
         _levelElev.Clear();
         _pendingWrite = null;
+        _lastUndo = null;
     }
 
     /// <summary>Compact snapshot of the recent backend conversation (for feedback logs).</summary>
@@ -107,10 +116,12 @@ public sealed class OrchestratorChatService : IChatService
     private static string Truncate(string s, int max) =>
         s.Length <= max ? s : s.Substring(0, max) + "…";
 
+    // ── Initialisation ────────────────────────────────────────────────────────
+
     /// <summary>
     /// On the first message, seed the system prompt. If no static schema was
-    /// supplied, fetch the real levels + categories from the active document so
-    /// the model is grounded in names that actually exist.
+    /// supplied, fetch the real levels + categories + active view + sample params
+    /// from the active document so the model is grounded in names that actually exist.
     /// </summary>
     private async Task EnsureInitializedAsync(CancellationToken ct)
     {
@@ -126,14 +137,77 @@ public sealed class OrchestratorChatService : IChatService
         {
             var empty = new JsonObject();
             var levels = await _revit.CallAsync("list_levels", empty, false, ct).ConfigureAwait(false);
-            var cats = await _revit.CallAsync("list_categories", new JsonObject(), false, ct).ConfigureAwait(false);
+            var cats = await _revit.CallAsync("list_categories", empty, false, ct).ConfigureAwait(false);
             PopulateLevelOrder(levels);
-            return ModelSchema.Build(levels, cats);
+
+            JsonObject? activeView = null;
+            try { activeView = await _revit.CallAsync("get_active_view", empty, false, ct).ConfigureAwait(false); }
+            catch { /* non-fatal — view info is a nice-to-have */ }
+
+            var paramsByCategory = await SampleParamsAsync(cats, ct).ConfigureAwait(false);
+
+            return ModelSchema.Build(levels, cats, activeView, paramsByCategory);
         }
         catch
         {
             return null;   // no document / dispatcher not ready → fall back to generic prompt
         }
+    }
+
+    /// <summary>
+    /// For the top 3 categories (by instance count), fetch 1 element and read its
+    /// parameter names so the model knows exact, project-specific param spellings.
+    /// Wrapped in try/catch per category so a failure on one doesn't abort the rest.
+    /// </summary>
+    private async Task<IReadOnlyDictionary<string, IReadOnlyList<string>>> SampleParamsAsync(
+        JsonObject? catsEnv, CancellationToken ct)
+    {
+        var result = new Dictionary<string, IReadOnlyList<string>>();
+
+        if (catsEnv?["data"]?["categories"] is not JsonArray arr) return result;
+
+        var topCats = arr
+            .OfType<JsonObject>()
+            .Select(o => (
+                Bic: o["builtInCategory"]?.GetValue<string>(),
+                Count: TryGetInt(o["instanceCount"]) ?? 0))
+            .Where(x => !string.IsNullOrEmpty(x.Bic) && x.Count > 0)
+            .OrderByDescending(x => x.Count)
+            .Take(3)
+            .ToList();
+
+        foreach (var (bic, _) in topCats)
+        {
+            try
+            {
+                var findArgs = new JsonObject { ["category"] = bic, ["limit"] = 1 };
+                var findEnv = await _revit.CallAsync("find_elements", findArgs, false, ct).ConfigureAwait(false);
+                if (!IsOk(findEnv)) continue;
+
+                var firstId = TryGetLong(findEnv["data"]?["elements"]?[0]?["id"]);
+                if (firstId is null) continue;
+
+                var infoArgs = new JsonObject { ["id"] = firstId.Value };
+                var infoEnv = await _revit.CallAsync("get_element_info", infoArgs, false, ct).ConfigureAwait(false);
+                if (!IsOk(infoEnv)) continue;
+
+                var names = new List<string>();
+                if (infoEnv["data"]?["parameters"] is JsonArray pArr)
+                {
+                    foreach (var p in pArr)
+                    {
+                        var name = p?["name"]?.GetValue<string>();
+                        if (!string.IsNullOrWhiteSpace(name) && name!.Length > 1 && !name.StartsWith("__"))
+                            names.Add(name!);
+                    }
+                }
+
+                if (names.Count > 0) result[bic!] = names;
+            }
+            catch { /* skip this category */ }
+        }
+
+        return result;
     }
 
     /// <summary>Capture level name → elevation so "group by Level" can sort low→high.</summary>
@@ -165,6 +239,8 @@ public sealed class OrchestratorChatService : IChatService
         return null;
     }
 
+    // ── Confirm / Cancel ─────────────────────────────────────────────────────
+
     public async Task<ChatTurn> ConfirmAsync(CancellationToken ct = default)
     {
         if (_pendingWrite is null)
@@ -178,13 +254,25 @@ public sealed class OrchestratorChatService : IChatService
         var result = await ExecuteAsync(write, dryRun: false, ct).ConfigureAwait(false);
         AppendToolResult(write, result);
 
+        // Build undo payload for a successful update_where
+        var canUndo = false;
+        if (write.FunctionName == "update_where" && IsOk(result))
+        {
+            _lastUndo = BuildUndoPayload(result);
+            canUndo = _lastUndo is not null;
+        }
+        else
+        {
+            _lastUndo = null;
+        }
+
         replies.Add(IsOk(result)
             ? new ChatReply("✅ " + SummaryOf(result, fallback: "Đã ghi thay đổi vào model."))
             : new ChatReply("❌ " + ErrorOf(result), IsError: true));
 
         var tail = await RunLoopAsync(ct).ConfigureAwait(false);
         replies.AddRange(tail.Replies);
-        return new ChatTurn(replies, tail.Pending, CurrentUsage(), _turnTables.ToList());
+        return new ChatTurn(replies, tail.Pending, CurrentUsage(), _turnTables.ToList(), canUndo);
     }
 
     public void CancelPending()
@@ -194,6 +282,84 @@ public sealed class OrchestratorChatService : IChatService
         AppendToolResult(_pendingWrite,
             JsonResultError("cancelled", "Người dùng đã hủy thao tác này."));
         _pendingWrite = null;
+    }
+
+    // ── Undo ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Restores the parameter values that were overwritten by the last confirmed
+    /// update_where. Groups elements by their before-value so a single
+    /// set_parameter_batch call handles each unique value (often just one group).
+    /// </summary>
+    public async Task<ChatTurn> UndoAsync(CancellationToken ct = default)
+    {
+        if (_lastUndo is null)
+            return new ChatTurn(new[] { new ChatReply("Không có thao tác nào để hoàn tác.") });
+
+        var undo = _lastUndo;
+        _lastUndo = null;
+
+        // Group by before-value: one set_parameter_batch call per unique value.
+        var groups = undo.Changes
+            .GroupBy(c => c.Before ?? "")
+            .ToList();
+
+        var totalRestored = 0;
+        var errorMessages = new List<string>();
+
+        foreach (var group in groups)
+        {
+            var ids = new JsonArray();
+            foreach (var (id, _) in group) ids.Add(id);
+
+            var batchArgs = new JsonObject
+            {
+                ["ids"] = ids,
+                ["parameterName"] = undo.SetParameter,
+                ["value"] = group.Key,
+                ["atomic"] = false,
+            };
+
+            var res = await _revit.CallAsync("set_parameter_batch", batchArgs, false, ct).ConfigureAwait(false);
+            if (IsOk(res))
+                totalRestored += group.Count();
+            else
+                errorMessages.Add(ErrorOf(res));
+        }
+
+        if (errorMessages.Count == 0)
+            return new ChatTurn(new[] { new ChatReply(
+                $"✅ Đã hoàn tác '{undo.SetParameter}' trên {totalRestored} phần tử.") });
+
+        var failCount = undo.Changes.Count - totalRestored;
+        var msg = totalRestored > 0
+            ? $"⚠️ Hoàn tác một phần: {totalRestored} OK, {failCount} lỗi: {string.Join("; ", errorMessages)}"
+            : $"❌ Hoàn tác thất bại: {string.Join("; ", errorMessages)}";
+        return new ChatTurn(new[] { new ChatReply(msg, IsError: totalRestored == 0) });
+    }
+
+    /// <summary>Builds an undo payload from an update_where result envelope.</summary>
+    private static UndoPayload? BuildUndoPayload(JsonObject result)
+    {
+        var data = result["data"] as JsonObject;
+        var paramName = data?["setParameter"]?.GetValue<string>();
+        if (string.IsNullOrEmpty(paramName)) return null;
+
+        var results = data?["results"] as JsonArray;
+        if (results is null) return null;
+
+        var changes = new List<(long, string?)>();
+        foreach (var r in results)
+        {
+            if (r is not JsonObject o) continue;
+            if (o["ok"] is not JsonValue okV || !okV.TryGetValue<bool>(out var ok) || !ok) continue;
+            var id = TryGetLong(o["id"]);
+            if (id is null) continue;
+            var before = o["before"]?.GetValue<string>();
+            changes.Add((id.Value, before));
+        }
+
+        return changes.Count > 0 ? new UndoPayload(paramName!, changes) : null;
     }
 
     // ── Core loop ────────────────────────────────────────────────────────────
@@ -338,9 +504,12 @@ public sealed class OrchestratorChatService : IChatService
     /// then filter CLIENT-SIDE with the rich operator set (ends_with, regex,
     /// is_empty, correct numeric compares). Returns a find_elements-shaped envelope
     /// whose data.elements/count are already filtered; errors pass through.
+    /// Optional <paramref name="viewId"/>: pass to Core so only elements visible
+    /// in that view are collected (uses FilteredElementCollector(doc, viewId)).
     /// </summary>
     private async Task<JsonObject> FetchFilteredAsync(
-        string category, JsonArray? filtersJson, IEnumerable<string> extraFields, CancellationToken ct)
+        string category, JsonArray? filtersJson, IEnumerable<string> extraFields,
+        CancellationToken ct, long? viewId = null)
     {
         var conds = ElementFilter.Parse(filtersJson);
 
@@ -351,6 +520,7 @@ public sealed class OrchestratorChatService : IChatService
 
         var findParams = new JsonObject { ["category"] = category, ["limit"] = FetchLimit };
         if (fields.Count > 0) findParams["fields"] = fields;
+        if (viewId.HasValue) findParams["view_id"] = viewId.Value;
 
         var env = await _revit.CallAsync("find_elements", findParams, false, ct).ConfigureAwait(false);
         if (!IsOk(env)) return env;
@@ -398,8 +568,11 @@ public sealed class OrchestratorChatService : IChatService
         if (string.IsNullOrWhiteSpace(category))
             return JsonResultError("bad_request", "find_elements cần 'category'.");
 
+        var viewId = TryGetLong(args["view_id"]);
+
         var env = await FetchFilteredAsync(
-            category!, args["filters"] as JsonArray, StringList(args["fields"]), ct).ConfigureAwait(false);
+            category!, args["filters"] as JsonArray, StringList(args["fields"]), ct, viewId)
+            .ConfigureAwait(false);
         if (!IsOk(env)) return env;
 
         // Cap the returned rows to the model's limit (≤ ListLimit so ResultTrimmer
@@ -430,8 +603,10 @@ public sealed class OrchestratorChatService : IChatService
 
         var groupBy = args["groupBy"]?.GetValue<string>();
         var extra = string.IsNullOrWhiteSpace(groupBy) ? Array.Empty<string>() : new[] { groupBy! };
+        var viewId = TryGetLong(args["view_id"]);
 
-        var env = await FetchFilteredAsync(category!, args["filters"] as JsonArray, extra, ct)
+        var env = await FetchFilteredAsync(
+            category!, args["filters"] as JsonArray, extra, ct, viewId)
             .ConfigureAwait(false);
         return Aggregator.Summarize(env, groupBy, LevelOrderFor(groupBy), IsDescending(args));
     }
@@ -462,11 +637,13 @@ public sealed class OrchestratorChatService : IChatService
         var unit = args["unit"]?.GetValue<string>();
         var top = Math.Clamp(TryGetInt(args["top"]) ?? 0, 0, 40);
         var (factor, label) = Aggregator.ResolveUnit(unit, parameter!);
+        var viewId = TryGetLong(args["view_id"]);
 
         var extra = new List<string> { parameter! };
         if (!string.IsNullOrWhiteSpace(groupBy)) extra.Add(groupBy!);
 
-        var env = await FetchFilteredAsync(category!, args["filters"] as JsonArray, extra, ct)
+        var env = await FetchFilteredAsync(
+            category!, args["filters"] as JsonArray, extra, ct, viewId)
             .ConfigureAwait(false);
         return Aggregator.SummarizeNumeric(
             env, parameter!, factor, label, top, groupBy, LevelOrderFor(groupBy), IsDescending(args));
@@ -487,6 +664,14 @@ public sealed class OrchestratorChatService : IChatService
         if (n is null) return null;
         try { return n.GetValue<int>(); } catch { }
         try { return (int)n.GetValue<long>(); } catch { }
+        return null;
+    }
+
+    private static long? TryGetLong(JsonNode? n)
+    {
+        if (n is null) return null;
+        try { return n.GetValue<long>(); } catch { }
+        try { return (long)n.GetValue<int>(); } catch { }
         return null;
     }
 

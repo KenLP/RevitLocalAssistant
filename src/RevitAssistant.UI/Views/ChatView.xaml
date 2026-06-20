@@ -96,6 +96,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Header -->
@@ -167,9 +168,14 @@
                                         </ScrollViewer>
                                         <TextBlock Text="{Binding Text}" FontSize="10" Opacity="0.6" Margin="0,3,0,0"
                                                    Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
-                                        <Button Content="📋 Copy bảng" Command="{Binding CopyTableCommand}"
-                                                HorizontalAlignment="Left" Margin="0,4,0,0" Padding="6,2" FontSize="11"
-                                                ToolTip="Sao chép bảng (dán được vào Excel)" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <Button Content="📋 Copy bảng" Command="{Binding CopyTableCommand}"
+                                                    Padding="6,2" FontSize="11"
+                                                    ToolTip="Sao chép bảng (dán được vào Excel)" />
+                                            <Button Content="📥 Xuất CSV" Command="{Binding ExportCsvCommand}"
+                                                    Margin="6,0,0,0" Padding="6,2" FontSize="11"
+                                                    ToolTip="Lưu bảng ra file CSV (UTF-8, mở được Excel)" />
+                                        </StackPanel>
                                     </StackPanel>
 
                                     <!-- TEXT bubble -->
@@ -307,8 +313,21 @@
             </StackPanel>
         </Border>
 
+        <!-- Undo last edit (available after a confirmed update_where) -->
+        <Border Grid.Row="4" Margin="2,2,2,0" Padding="6,5" CornerRadius="6"
+                Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                Visibility="{Binding HasUndo, Converter={StaticResource BoolToVis}}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Vừa ghi thay đổi." VerticalAlignment="Center" FontSize="11" Opacity="0.75"
+                           Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+                <Button Content="⏪ Hoàn tác" Command="{Binding UndoCommand}"
+                        Margin="8,0,0,0" Padding="8,3" FontSize="11"
+                        ToolTip="Khôi phục giá trị trước khi ghi (undo lần cuối)" />
+            </StackPanel>
+        </Border>
+
         <!-- Input -->
-        <Border Grid.Row="4" Margin="2,4,2,2" Padding="4" CornerRadius="8"
+        <Border Grid.Row="5" Margin="2,4,2,2" Padding="4" CornerRadius="8"
                 Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
             <Grid>
                 <Grid.ColumnDefinitions>
@@ -329,7 +348,7 @@
         </Border>
 
         <!-- Disclaimer -->
-        <TextBlock Grid.Row="5" Margin="6,4,6,2" TextAlignment="Center" TextWrapping="Wrap"
+        <TextBlock Grid.Row="6" Margin="6,4,6,2" TextAlignment="Center" TextWrapping="Wrap"
                    FontSize="10" Opacity="0.55"
                    Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
                    Text="Câu trả lời do AI tạo có thể thiếu sót hoặc chưa chính xác. Hãy kiểm tra kết quả trước khi sử dụng." />
