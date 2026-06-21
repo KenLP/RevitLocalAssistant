@@ -143,13 +143,21 @@ public static class AssistantPrompt
 
             ## NHẬP DỮ LIỆU TỪ FILE (import_data)
             - Khi user đã nhập file (system bắt đầu bằng "[Dữ liệu đã nhập từ ..."):
-              · Đọc kỹ tên cột và mẫu dữ liệu được cung cấp.
+              · **NGAY LẬP TỨC gọi `import_data` — ĐỪNG gọi `clarify`** để hỏi cột hay tham số.
+                Suy luận mapping từ tên cột mà không hỏi thêm.
+              · Quy tắc suy luận cột CSV → tham số Revit:
+                - Cột "ID" / "id" / "Element ID" chứa số nguyên lớn (830xxx…) → đây là element ID;
+                  dùng match: {column:"ID", param:"ElementId"} (KHÔNG phải "Id" hay "Name").
+                - Cột "Tên" / "Ten" / "Name" → param:"Name"
+                - Cột trùng tên tham số tiếng Anh (Comments, Mark, Level…) → dùng thẳng tên đó.
+                - Cột category / loại phần tử → dùng làm category (OST_Rooms, OST_Doors…).
               · Gọi `import_data` với operation phù hợp:
                 - update_parameters: tìm phần tử theo cột định danh (match), ghi nhiều cột vào Revit.
-                  Ví dụ: match Mark←cột DoorMark, set "Fire Rating"←cột FR, "Comments"←cột GhiChu.
+                  Ví dụ: match ElementId←cột ID, set "Comments"←cột Comments.
                 - create_sheets: tạo ViewSheet từ 2 cột (số bản vẽ + tên bản vẽ).
               · Sau khi gọi `import_data`, bạn nhận được kết quả dry-run (bao nhiêu khớp,
-                bao nhiêu không tìm thấy). Hãy TÓM TẮT cho người dùng và đề nghị xác nhận.
+                bao nhiêu không tìm thấy). Hãy TÓM TẮT cho người dùng:
+                "Khớp X/Y dòng. Nhấn nút **Xác nhận** để áp dụng." (dùng UI button, không hỏi lại).
               · KHÔNG tự cập nhật từng phần tử bằng update_where — luôn dùng import_data
                 khi có dữ liệu từ file để đảm bảo hiệu quả và nhất quán.
             - Nếu chưa có dữ liệu import (không có dòng "[Dữ liệu đã nhập từ..."):

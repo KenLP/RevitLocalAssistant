@@ -73,6 +73,11 @@ public sealed class OrchestratorChatService : IChatService
     {
         await EnsureInitializedAsync(ct).ConfigureAwait(false);
 
+        // If an import dry-run is waiting for confirmation and the user types a
+        // confirmation intent, commit directly without going through the LLM.
+        if (_pendingImportCommit is not null && IsConfirmIntent(userInput))
+            return await CommitImportAsync(ct).ConfigureAwait(false);
+
         // If a table is waiting, inject its summary so the LLM knows what to map.
         var content = userInput;
         if (_pendingImport is { } imp)
@@ -355,6 +360,14 @@ public sealed class OrchestratorChatService : IChatService
             : $"⚠️ Đã nhập {result.Applied} phần tử. {result.Failed} lỗi.";
         return new ChatTurn(new[] { new ChatReply(msg) },
             ContextUsage: CurrentUsage(), Tables: _turnTables.ToList());
+    }
+
+    private static bool IsConfirmIntent(string s)
+    {
+        var t = s.Trim().ToLowerInvariant();
+        return t is "xác nhận" or "ok" or "yes" or "có" or "đồng ý" or "tiếp tục"
+                 or "confirm" or "go" or "proceed" or "apply" or "thực hiện" or "nhận"
+            || t.Contains("xác nhận") || t.Contains("đồng ý") || t.Contains("tiếp tục");
     }
 
     public void CancelPending()

@@ -43,16 +43,31 @@ public static class ImportExecutor
 
         // Build lookup: display-value of match param → elementId (case-insensitive)
         var lookup = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        // "ElementId" / "Id" / "Element Id" → match against el["id"] directly (not a field)
+        var matchByElementId =
+            spec.Match.Param.Equals("ElementId", StringComparison.OrdinalIgnoreCase) ||
+            spec.Match.Param.Equals("Id", StringComparison.OrdinalIgnoreCase) ||
+            spec.Match.Param.Equals("Element Id", StringComparison.OrdinalIgnoreCase) ||
+            spec.Match.Param.Equals("element_id", StringComparison.OrdinalIgnoreCase);
+
         if (env["data"]?["elements"] is JsonArray elements)
         {
             foreach (var el in elements.OfType<JsonObject>())
             {
                 var id = TryLong(el["id"]);
                 if (id is null) continue;
-                var fieldsObj = el["fields"] as JsonObject;
-                // Prefer display string; fall back to raw value
-                var matchVal = fieldsObj?[spec.Match.Param + "_display"]?.GetValue<string>()
-                            ?? fieldsObj?[spec.Match.Param]?.ToString();
+                string? matchVal;
+                if (matchByElementId)
+                {
+                    matchVal = id.Value.ToString();
+                }
+                else
+                {
+                    var fieldsObj = el["fields"] as JsonObject;
+                    // Prefer display string; fall back to raw value
+                    matchVal = fieldsObj?[spec.Match.Param + "_display"]?.GetValue<string>()
+                             ?? fieldsObj?[spec.Match.Param]?.ToString();
+                }
                 if (!string.IsNullOrWhiteSpace(matchVal) && !lookup.ContainsKey(matchVal!))
                     lookup[matchVal!] = id.Value;
             }
