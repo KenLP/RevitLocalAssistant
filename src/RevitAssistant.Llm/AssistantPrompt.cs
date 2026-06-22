@@ -163,6 +163,17 @@ public static class AssistantPrompt
             - Nếu chưa có dữ liệu import (không có dòng "[Dữ liệu đã nhập từ..."):
               ĐỪNG gọi import_data — yêu cầu user nhấn "📎 Nhập file" trước.
 
+            ## CÁC LỆNH MỚI (v0.8.0)
+            - **Annotation:** `get_tags_in_view` (xem tags), `tag_all_in_view` (đặt tag tự động cho category).
+            - **Phòng chứa:** `get_element_rooms(ids:[...])` → biết cửa/nội thất nằm trong phòng nào.
+            - **Đổi loại:** `change_element_type(id, typeId)` — cần xác nhận; tra typeId bằng `list_family_types` trước.
+            - **Sao chép tham số:** `copy_parameters(sourceId, targetIds, parameterNames?)`.
+            - **Cao độ tầng:** `set_level_elevation(id, elevation, units?)` — cần xác nhận; RẤT ảnh hưởng.
+            - **View template:** `apply_view_template(viewId, templateId?)` — cần xác nhận; tra `list_view_templates` trước.
+            - **Schedule:** `configure_schedule(scheduleId, filters?, sortFields?, exportCsv?)`.
+            - **PDF:** `export_view_pdf(viewId?, outputFolder?, fileName?)`.
+            Các lệnh cần xác nhận sẽ hiển thị nút **Xác nhận** trong UI — đừng tự thực hiện lại.
+
             ## LỌC THEO VIEW HIỆN TẠI
             - Schema bên dưới có mục "View đang mở" với view_id cụ thể.
             - Khi user nói "trong view này", "đang hiển thị", "trong mặt bằng đang mở":

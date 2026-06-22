@@ -29,6 +29,14 @@ public sealed class OrchestratorChatService : IChatService
             "update_where", "set_parameter", "set_parameter_batch", "rename_element",
         };
 
+    // Write commands that DON'T support dryRun in Core — we build a preview from
+    // args alone, then execute for real on confirm (no pre-flight Revit call).
+    private static readonly HashSet<string> ConfirmExecTools =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "change_element_type", "set_level_elevation", "apply_view_template",
+        };
+
     private const int MaxIterations = 6;
 
     private readonly ILlmClient _llm;
@@ -599,6 +607,30 @@ public sealed class OrchestratorChatService : IChatService
         }
     }
 
+    private static ChangePreview BuildConfirmExecPreview(ToolCall tc)
+    {
+        var a = tc.ParseArguments();
+        return tc.FunctionName switch
+        {
+            "change_element_type" => new ChangePreview(
+                "Đổi loại phần tử (Type)",
+                $"Sẽ đổi type của phần tử ID {a["id"]} → typeId {a["typeId"]}.",
+                [new PreviewRow($"ID {a["id"]}", $"→ typeId {a["typeId"]}")], 1),
+
+            "set_level_elevation" => new ChangePreview(
+                "Điều chỉnh cao độ tầng",
+                $"⚠️ Sẽ đặt cao độ tầng ID {a["id"]} = {a["elevation"]} {a["units"]?.GetValue<string>() ?? "m"}. Ảnh hưởng toàn bộ phần tử trên tầng này.",
+                [new PreviewRow($"Level ID {a["id"]}", $"elevation = {a["elevation"]} {a["units"]?.GetValue<string>() ?? "m"}")], 1),
+
+            "apply_view_template" => new ChangePreview(
+                "Áp dụng View Template",
+                $"Sẽ áp dụng template '{a["templateName"]?.GetValue<string>() ?? a["templateId"]?.ToString() ?? "?"}' lên View ID {a["viewId"]}.",
+                [new PreviewRow($"View ID {a["viewId"]}", $"template = {a["templateName"]?.GetValue<string>() ?? a["templateId"]?.ToString() ?? "?"}")], 1),
+
+            _ => new ChangePreview(tc.FunctionName, $"Xác nhận thực hiện '{tc.FunctionName}'.", [], 1),
+        };
+    }
+
     // ── Core loop ────────────────────────────────────────────────────────────
 
     private async Task<ChatTurn> RunLoopAsync(CancellationToken ct)
@@ -696,6 +728,16 @@ public sealed class OrchestratorChatService : IChatService
                     }
                     // Error was fed back already via AppendToolResult; continue loop.
                     continue;
+                }
+
+                if (ConfirmExecTools.Contains(tc.FunctionName))
+                {
+                    // Build a preview from args alone (no Revit call yet).
+                    // The command executes for real only when the user confirms.
+                    var preview = BuildConfirmExecPreview(tc);
+                    _pendingWrite = tc;
+                    DeferRemaining(calls, k + 1);
+                    return new ChatTurn(replies, preview);
                 }
 
                 if (WriteTools.Contains(tc.FunctionName))

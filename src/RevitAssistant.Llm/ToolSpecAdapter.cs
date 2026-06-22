@@ -366,6 +366,188 @@ public static class ToolSpecAdapter
                 }
                 """)),
 
+            // ── Annotation / rooms ──────────────────────────────────────────
+            new ToolDefinition(
+                "get_element_rooms",
+                "For a list of family instance IDs (doors, windows, furniture…), returns the room " +
+                "that contains each element (and fromRoom/toRoom for openings). " +
+                "Dùng khi hỏi 'cửa này ở phòng nào?', 'nội thất trong phòng nào?'",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "ids": {
+                      "type": "array",
+                      "items": { "type": "integer" },
+                      "description": "List of element IDs."
+                    }
+                  },
+                  "required": ["ids"]
+                }
+                """)),
+
+            new ToolDefinition(
+                "get_tags_in_view",
+                "List all annotation tags currently placed in a view, with their tagged element, " +
+                "category, tag text, and position. " +
+                "Dùng khi hỏi 'view này đã tag những gì?', 'tag nào còn thiếu?'",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "viewId": { "type": "integer", "description": "View to inspect. Omit for the active view." },
+                    "category": { "type": "string", "description": "Optional BuiltInCategory filter, e.g. 'OST_Doors'." }
+                  }
+                }
+                """)),
+
+            new ToolDefinition(
+                "tag_all_in_view",
+                "Automatically place tags on all un-tagged elements of a given category in a view. " +
+                "Dùng khi hỏi 'tag tất cả cửa / phòng trong view', 'đặt tag cho mặt bằng tầng X'. " +
+                "By default skips already-tagged elements (skipTagged=true).",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "category": { "type": "string", "description": "BuiltInCategory to tag, e.g. 'OST_Doors', 'OST_Rooms'." },
+                    "viewId": { "type": "integer", "description": "View to tag in. Omit for the active view." },
+                    "leader": { "type": "boolean", "description": "Whether to add a leader line. Default false." },
+                    "skipTagged": { "type": "boolean", "description": "Skip elements that already have a tag. Default true." }
+                  },
+                  "required": ["category"]
+                }
+                """)),
+
+            // ── Write — type / parameter ops ─────────────────────────────────
+            new ToolDefinition(
+                "change_element_type",
+                "Change an element's Revit type (Family Type). Requires confirmation before executing. " +
+                "Dùng khi user nói 'đổi loại cửa 101A thành loại khác', 'thay type tường thành tường dày 200'. " +
+                "ALWAYS call list_family_types first to find the correct typeId.",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer", "description": "ElementId to change." },
+                    "typeId": { "type": "integer", "description": "Target type ElementId." }
+                  },
+                  "required": ["id", "typeId"]
+                }
+                """)),
+
+            new ToolDefinition(
+                "copy_parameters",
+                "Copy one or more parameter values from a source element to multiple target elements. " +
+                "Dùng khi user nói 'sao chép Comments từ phòng 501 sang 502, 503', 'nhân Fire Rating từ cửa này sang tất cả cửa kia'.",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "sourceId": { "type": "integer", "description": "Element to copy parameters FROM." },
+                    "targetIds": {
+                      "type": "array",
+                      "items": { "type": "integer" },
+                      "description": "Elements to copy parameters TO."
+                    },
+                    "parameterNames": {
+                      "type": "array",
+                      "items": { "type": "string" },
+                      "description": "Names of params to copy. Omit to copy all writable params."
+                    }
+                  },
+                  "required": ["sourceId", "targetIds"]
+                }
+                """)),
+
+            new ToolDefinition(
+                "apply_view_template",
+                "Apply a saved View Template to a view. Requires confirmation. " +
+                "Dùng khi user nói 'áp view template', 'chuẩn hoá view theo template'. " +
+                "ALWAYS call list_view_templates first to find templateId or templateName.",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "viewId": { "type": "integer", "description": "View to apply the template to." },
+                    "templateId": { "type": "integer", "description": "Template ElementId (preferred)." },
+                    "templateName": { "type": "string", "description": "Template name (fallback if id unknown)." }
+                  },
+                  "required": ["viewId"]
+                }
+                """)),
+
+            // ── Write — levels ───────────────────────────────────────────────
+            new ToolDefinition(
+                "set_level_elevation",
+                "Change a Level's elevation. HIGH IMPACT — affects all elements on that level. " +
+                "Requires confirmation before executing. " +
+                "Dùng khi user nói 'đặt cao độ tầng L5 = 15.6m', 'tầng 3 lên 9.5m'. " +
+                "Call list_levels first to confirm the Level id.",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer", "description": "Level ElementId." },
+                    "elevation": { "type": "number", "description": "New elevation value." },
+                    "units": {
+                      "type": "string",
+                      "enum": ["meters", "feet", "mm", "internal"],
+                      "description": "Unit of the elevation value. Default 'meters'."
+                    }
+                  },
+                  "required": ["id", "elevation"]
+                }
+                """)),
+
+            // ── Write — schedule & PDF ────────────────────────────────────────
+            new ToolDefinition(
+                "configure_schedule",
+                "Add filters or sort fields to an existing schedule, and optionally export its data as CSV. " +
+                "Dùng khi user nói 'lọc schedule', 'sắp xếp schedule theo Level', 'xuất schedule ra CSV'.",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "scheduleId": { "type": "integer", "description": "Schedule view ElementId." },
+                    "clearFilters": { "type": "boolean" },
+                    "clearSortFields": { "type": "boolean" },
+                    "filters": {
+                      "type": "array",
+                      "description": "Array of filter objects with fieldName, filterType, value.",
+                      "items": { "type": "object" }
+                    },
+                    "sortFields": {
+                      "type": "array",
+                      "description": "Array of sort objects with fieldName and ascending (bool).",
+                      "items": { "type": "object" }
+                    },
+                    "exportCsv": { "type": "boolean", "description": "If true, returns the schedule data as CSV text." }
+                  },
+                  "required": ["scheduleId"]
+                }
+                """)),
+
+            new ToolDefinition(
+                "export_view_pdf",
+                "Export a Revit view or sheet to a PDF file on disk. " +
+                "Dùng khi user nói 'xuất bản vẽ ra PDF', 'in view hiện tại thành PDF'.",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "viewId": { "type": "integer", "description": "View / sheet to export. Omit for active view." },
+                    "outputFolder": { "type": "string", "description": "Folder path for the PDF." },
+                    "fileName": { "type": "string", "description": "File name without extension." },
+                    "colorMode": {
+                      "type": "string",
+                      "enum": ["Color", "GrayScale", "BlackLine"],
+                      "description": "Print colour mode. Default 'Color'."
+                    }
+                  }
+                }
+                """)),
+
             // ── Spreadsheet import ──────────────────────────────────────────
             new ToolDefinition(
                 "import_data",
