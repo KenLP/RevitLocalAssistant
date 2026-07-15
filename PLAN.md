@@ -1,8 +1,14 @@
 # RevitLocalAssistant — Detailed Build Plan
 
-> Local-running Revit **R26-first** (R25/R27-ready) add-in assistant. Chat in **Vietnamese or English**, query model info, run **compliance checks**, and perform **safe bulk parameter edits** with dry-run preview. Runs **fully offline** on a local LLM (Ollama). Reuses the mature **RevitMCPServer v0.8.0** service layer.
+> Local-running Revit **R26-first** (R25/R27-ready) add-in assistant. Chat in **Vietnamese or English**, query model info, run **compliance checks**, and perform **safe bulk parameter edits** with dry-run preview. Runs **fully offline** on a local LLM (Ollama). Reuses the mature **RevitMCPServer** service layer.
 >
 > Prepared for Ken Phuc — 2026-06-15.
+
+> **Current submodule pin (2026-07-15):** `extern/RevitMCPCore` @ commit `9c22e50` — the
+> v0.8.0 command set (~70 commands, described below as first inspected) plus later spatial/QC
+> additions (`get_doors`, `get_room_boundary`, `raycast_headroom`, `create_detail_line`; 86
+> commands total). The section below documents the original 2026-06-15 inspection as-is;
+> it is historical context for the decisions made, not a live version tracker.
 
 > **Decisions locked (2026-06-15):** Core sharing = **git submodule** (extract `RevitMCP.Core` from
 > the MCP repo first). Default LLM = **Qwen2.5-7B-Instruct (Q4_K_M)**, 14B opt-in. Installer =

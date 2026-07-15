@@ -35,6 +35,7 @@ public sealed class OrchestratorChatService : IChatService
         new(StringComparer.OrdinalIgnoreCase)
         {
             "change_element_type", "set_level_elevation", "apply_view_template",
+            "create_detail_line",
         };
 
     private const int MaxIterations = 6;
@@ -626,6 +627,12 @@ public sealed class OrchestratorChatService : IChatService
                 "Áp dụng View Template",
                 $"Sẽ áp dụng template '{a["templateName"]?.GetValue<string>() ?? a["templateId"]?.ToString() ?? "?"}' lên View ID {a["viewId"]}.",
                 [new PreviewRow($"View ID {a["viewId"]}", $"template = {a["templateName"]?.GetValue<string>() ?? a["templateId"]?.ToString() ?? "?"}")], 1),
+
+            "create_detail_line" => new ChangePreview(
+                "Vẽ detail line",
+                $"Sẽ vẽ một detail line trong {(a["viewId"] is not null ? $"View ID {a["viewId"]}" : "view đang mở")}.",
+                [new PreviewRow("start", a["start"]?.ToJsonString() ?? "?"),
+                 new PreviewRow("end", a["end"]?.ToJsonString() ?? "?")], 1),
 
             _ => new ChangePreview(tc.FunctionName, $"Xác nhận thực hiện '{tc.FunctionName}'.", [], 1),
         };

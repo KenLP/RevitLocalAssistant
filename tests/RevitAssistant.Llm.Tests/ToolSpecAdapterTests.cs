@@ -33,6 +33,10 @@ public sealed class ToolSpecAdapterTests
     [InlineData("get_selected_elements")]
     [InlineData("echo_interpretation")]
     [InlineData("clarify")]
+    [InlineData("get_doors")]
+    [InlineData("get_room_boundary")]
+    [InlineData("raycast_headroom")]
+    [InlineData("create_detail_line")]
     public void BuildToolSurface_ContainsTool(string toolName)
     {
         _tools.Should().Contain(t => t.Name == toolName,
