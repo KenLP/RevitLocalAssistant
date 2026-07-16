@@ -419,6 +419,93 @@ public static class ToolSpecAdapter
                 }
                 """)),
 
+            // ── Spatial / QC geometry (server v0.8 additions) ───────────────
+            new ToolDefinition(
+                "get_doors",
+                "List all placed doors with nominal Width (metres), plan location (x,y in metres) " +
+                "and Level. Dùng khi cần chiều rộng / vị trí cửa để kiểm tra lối thoát hiểm hay " +
+                "độ rộng thông thuỷ cửa. (Chỉ trả HÌNH HỌC cửa — để đọc tham số bất kỳ của cửa " +
+                "vẫn dùng query_where.)",
+                Schema("""{"type":"object","properties":{}}""")),
+
+            new ToolDefinition(
+                "get_room_boundary",
+                "Get room boundary polylines (outer ring + inner holes) in METRES at the finish face " +
+                "(net clear area, matching IfcSpace). Dùng cho kiểm tra hình học phòng: bề rộng hành " +
+                "lang thông thuỷ, diện tích tịnh, đường bao phòng. Bỏ trống để lấy mọi phòng, hoặc lọc " +
+                "một phòng theo id hoặc number.",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer", "description": "Room ElementId to target one room." },
+                    "number": { "type": "string", "description": "Room Number to target one room, e.g. '101'." }
+                  }
+                }
+                """)),
+
+            new ToolDefinition(
+                "raycast_headroom",
+                "Compute vertical HEADROOM (chiều cao thông thuỷ, metres) at given (x,y) points — fires a " +
+                "ray up from the floor to the lowest overhead soffit (ceiling / floor-above / roof / " +
+                "structural framing; cầu thang được loại trừ). Trả về mảng headrooms khớp thứ tự points. " +
+                "Toạ độ & kết quả theo mét (đặt units:'feet' nếu dùng feet).",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "points": {
+                      "type": "array",
+                      "description": "Points to test.",
+                      "items": {
+                        "type": "object",
+                        "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+                        "required": ["x", "y"]
+                      }
+                    },
+                    "floorZ": { "type": "number", "description": "Floor elevation to fire the ray from." },
+                    "maxHeight": { "type": "number", "description": "Height reported when no soffit is hit. Default 8." },
+                    "minObstacleHeight": { "type": "number", "description": "Ignore hits below this height. Default 0.5." },
+                    "units": { "type": "string", "enum": ["meters", "feet"], "description": "Units for coords & result. Default meters." }
+                  },
+                  "required": ["points", "floorZ"]
+                }
+                """)),
+
+            new ToolDefinition(
+                "create_detail_line",
+                "Draw a view-specific DETAIL LINE between two points (metres) with optional colour + weight. " +
+                "CẦN XÁC NHẬN trước khi vẽ. Dùng để đánh dấu / đo trực quan trong view (vd vẽ bề rộng hẹp " +
+                "nhất của hành lang). Toạ độ theo mét (units:'feet' để bỏ quy đổi).",
+                Schema("""
+                {
+                  "type": "object",
+                  "properties": {
+                    "start": {
+                      "type": "object",
+                      "description": "Start point (metres).",
+                      "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "z": { "type": "number" } },
+                      "required": ["x", "y"]
+                    },
+                    "end": {
+                      "type": "object",
+                      "description": "End point (metres).",
+                      "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "z": { "type": "number" } },
+                      "required": ["x", "y"]
+                    },
+                    "viewId": { "type": "integer", "description": "View to draw in. Omit for the active view." },
+                    "color": {
+                      "type": "object",
+                      "description": "Line colour, 0-255 per channel. Default red (255,0,0).",
+                      "properties": { "r": { "type": "integer" }, "g": { "type": "integer" }, "b": { "type": "integer" } }
+                    },
+                    "weight": { "type": "integer", "minimum": 1, "maximum": 16, "description": "Line weight. Default 6." },
+                    "units": { "type": "string", "enum": ["meters", "feet"], "description": "Units for coordinates. Default meters." }
+                  },
+                  "required": ["start", "end"]
+                }
+                """)),
+
             // ── Write — type / parameter ops ─────────────────────────────────
             new ToolDefinition(
                 "change_element_type",

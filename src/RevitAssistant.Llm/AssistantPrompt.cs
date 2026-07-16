@@ -31,7 +31,8 @@ public static class AssistantPrompt
             ## QUERY / EDIT — use query_where & update_where (your main tools)
             - There is NO other tool for element parameters. To read/check/list/count any
               element or parameter → `query_where`. To edit → `update_where`. Do not invent
-              tool names (no "read_one", "get_doors", …).
+              tool names (no "read_one", "list_doors", …). (`get_doors` DOES exist but only
+              returns door width + location geometry — not arbitrary parameters.)
             - Find / list / COUNT elements by condition → `query_where`. It returns
               { count, rows }. "bao nhiêu cửa …" → read `count`; "liệt kê …" → read `rows`.
               Conditions go in `where:[{parameter, operator, value?, scope?}]` (AND):
@@ -173,6 +174,19 @@ public static class AssistantPrompt
             - **Schedule:** `configure_schedule(scheduleId, filters?, sortFields?, exportCsv?)`.
             - **PDF:** `export_view_pdf(viewId?, outputFolder?, fileName?)`.
             Các lệnh cần xác nhận sẽ hiển thị nút **Xác nhận** trong UI — đừng tự thực hiện lại.
+
+            ## HÌNH HỌC / QC KHÔNG GIAN (spatial-QC)
+            Các tool này trả HÌNH HỌC (toạ độ theo MÉT), không phải tham số — dùng cho kiểm
+            tra không gian, KHÔNG dùng để đọc/sửa tham số (vẫn là query_where/update_where):
+            - **Cửa:** `get_doors` → mọi cửa kèm Width (m), vị trí (x,y) và Level. Dùng cho
+              độ rộng thông thuỷ cửa / lối thoát hiểm.
+            - **Đường bao phòng:** `get_room_boundary(id?|number?)` → polyline đường bao phòng
+              (mặt hoàn thiện, diện tích tịnh). Dùng cho bề rộng hành lang, diện tích tịnh.
+            - **Chiều cao thông thuỷ:** `raycast_headroom(points:[{x,y}], floorZ, …)` → headroom (m)
+              tại từng điểm.
+            - **Vẽ detail line:** `create_detail_line(start, end, viewId?, color?, weight?)` —
+              CẦN XÁC NHẬN; đánh dấu / đo trực quan trong view.
+            Cần toạ độ (x,y) mà người dùng chưa cung cấp → gọi `clarify` hỏi, đừng bịa toạ độ.
 
             ## LỌC THEO VIEW HIỆN TẠI
             - Schema bên dưới có mục "View đang mở" với view_id cụ thể.

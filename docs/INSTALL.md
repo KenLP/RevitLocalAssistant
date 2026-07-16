@@ -14,8 +14,8 @@
 ## Quick install (developer)
 
 ```powershell
-git clone --recurse-submodules https://github.com/KenLP/RevitAssistant
-cd RevitAssistant
+git clone --recurse-submodules https://github.com/KenLP/RevitLocalAssistant
+cd RevitLocalAssistant
 dotnet build -p:RevitVersion=2026   # auto-deploys to %APPDATA%\Autodesk\Revit\Addins\2026\
 ```
 
