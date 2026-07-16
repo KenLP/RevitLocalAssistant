@@ -4,11 +4,15 @@
 >
 > Prepared for Ken Phuc — 2026-06-15.
 
-> **Current submodule pin (2026-07-15):** `extern/RevitMCPCore` @ commit `9c22e50` — the
-> v0.8.0 command set (~70 commands, described below as first inspected) plus later spatial/QC
-> additions (`get_doors`, `get_room_boundary`, `raycast_headroom`, `create_detail_line`; 86
-> commands total). The section below documents the original 2026-06-15 inspection as-is;
-> it is historical context for the decisions made, not a live version tracker.
+> **Current submodule pin (2026-07-16):** `extern/RevitMCPCore` @ `origin/main` commit
+> `33d60b6` (v0.8.15) — re-pinned from the `feat/extract-revit-mcp-core` fork (`9c22e50`) once
+> `main` became a strict superset (91 commands total). Two spatial-QC tools carry a `spatial_`
+> prefix on `main`: `get_room_boundary` → `spatial_get_room_boundary`,
+> `raycast_headroom` → `spatial_raycast_headroom`; `get_doors` and `create_detail_line` kept
+> their names. See [docs/handoffs/HANDOFF_revitmcp-find-elements-fix.md](docs/handoffs/HANDOFF_revitmcp-find-elements-fix.md)
+> for how the fork's remaining gap (`view_id`) was closed upstream. The section below documents
+> the original 2026-06-15 inspection as-is; it is historical context for the decisions made,
+> not a live version tracker.
 
 > **Decisions locked (2026-06-15):** Core sharing = **git submodule** (extract `RevitMCP.Core` from
 > the MCP repo first). Default LLM = **Qwen2.5-7B-Instruct (Q4_K_M)**, 14B opt-in. Installer =
