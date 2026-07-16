@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-07-16
+
+- **Re-pinned the `extern/RevitMCPCore` submodule** from the `feat/extract-revit-mcp-core`
+  fork (`9c22e50`) to `origin/main` (`33d60b6`, v0.8.15, 91 commands). The fork's fixes for
+  `find_elements`/`list_elements` pagination and type-parameter resolution (documented in
+  [docs/handoffs/HANDOFF_revitmcp-find-elements-fix.md](docs/handoffs/HANDOFF_revitmcp-find-elements-fix.md))
+  turned out to already be on `main` (v0.8.6/v0.8.11); the one gap `main` had — `view_id`
+  scoping — was ported upstream in `33d60b6`, making it a strict superset of the fork.
+- Renamed 2 tool calls to match `main`'s naming: `get_room_boundary` → `spatial_get_room_boundary`,
+  `raycast_headroom` → `spatial_raycast_headroom` (`get_doors` and `create_detail_line` kept
+  their names).
+
 ## 2026-07-15
 
 - **Fixed `find_elements`/`list_elements` pagination and type-parameter resolution**

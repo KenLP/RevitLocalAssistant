@@ -1,9 +1,10 @@
 # Core Extraction Task Brief
 
 > **[HOÀN TẤT — tài liệu lịch sử]** Việc tách Core đã xong; `extern/RevitMCPCore` hiện là git
-> submodule, pin ở commit `9c22e50` (v0.8.0 + get_doors/get_room_boundary/raycast_headroom/
-> create_detail_line, 86 command — cập nhật 2026-07-15). Nội dung dưới đây mô tả brief gốc tại
-> thời điểm `e6b00b8` (v0.8.0) — giữ nguyên làm hồ sơ lịch sử, không phản ánh trạng thái hiện tại.
+> submodule, pin ở `origin/main` commit `33d60b6` (v0.8.15, 91 command — cập nhật 2026-07-16,
+> re-pin từ nhánh `feat/extract-revit-mcp-core` @ `9c22e50` khi `main` trở thành superset).
+> Nội dung dưới đây mô tả brief gốc tại thời điểm `e6b00b8` (v0.8.0) — giữ nguyên làm hồ sơ
+> lịch sử, không phản ánh trạng thái hiện tại.
 
 > **Dành cho session đang xử lý RevitMCPServer.**
 > Đây là hướng dẫn chi tiết để tách `RevitMCP.Core` classlib từ repo hiện tại.
