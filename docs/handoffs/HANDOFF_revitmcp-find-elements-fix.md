@@ -2,7 +2,7 @@
 
 - **Từ:** RevitLocalAssistant (worktree `wizardly-curie-920ae4`, submodule `extern/RevitMCPCore`)
   → **Đến:** RevitMCPServer (`https://github.com/KenLP/RevitMCPServer`)
-- **Ngày:** 2026-07-15 · **Mức ưu tiên:** Cao (trả sai/thiếu dữ liệu một cách âm thầm) · **Trạng thái:** OPEN
+- **Ngày:** 2026-07-15 · **Mức ưu tiên:** Cao (trả sai/thiếu dữ liệu một cách âm thầm) · **Trạng thái:** RESOLVED — xem mục "RESOLUTION" cuối file (2026-07-15, phía RevitMCPServer)
 
 ## Bối cảnh (tại sao cần)
 
@@ -237,3 +237,73 @@ Bản vá này **đã được build và chạy qua các bước trên trong wor
 - **Không** merge/rebase `feat/extract-revit-mcp-core` với `origin/main` nói chung — chỉ lấy nguyên `ListElementsCommand.cs` như hướng dẫn trên; các khác biệt khác giữa hai nhánh (nếu có) không thuộc phạm vi handoff này.
 - **Không** thêm field/tool mới nào ngoài 2 file đã nêu.
 - **Không** đổi format response ngoài các key additive đã liệt kê (`total`/`offset`/`hasMore`/`nextOffset`) — giữ nguyên `count`/`limit`/`truncated`/`elements` để client cũ không vỡ.
+
+---
+
+## RESOLUTION (2026-07-15, phía RevitMCPServer — verify trên origin/main tươi)
+
+### Tiền đề của handoff sai một nửa — đã kiểm chứng lại
+
+Bảng "Đã verify khoảng trống" ở trên **sai ở cột `origin/main`**. Verify lại trên
+`origin/main` fetch tươi (tip `d041081`):
+
+```
+$ git show origin/main:src/RevitMCP.Core/Commands/FindElementsCommand.cs | grep -c LookupInstanceOrType
+3        # KHÔNG phải 0 như handoff ghi
+$ git show origin/main:src/RevitMCP.Core/Commands/FindElementsCommand.cs | grep -n "Skip(offset)"
+86:      # pagination có thật
+```
+
+| | `origin/main` (thực tế) | `feat/extract-revit-mcp-core` |
+|---|---|---|
+| Bug 1 (offset) | ✅ đã fix từ **v0.8.6** (P2-C) | ❌ |
+| Bug 2 (type param) | ✅ đã fix từ **v0.8.11** (commit `94a3c38`) | ❌ |
+| `view_id` | ✅ **mới port, commit `33d60b6` (v0.8.15)** | ✅ |
+
+Grep "=0" trong handoff nhiều khả năng chạy trên clone chưa fetch thật. Docstring
+của `FindElementsCommand` trên main khi đó cũng còn stale (không nhắc offset/type
+fallback) — góp phần gây chẩn đoán nhầm; đã sửa docstring trong `33d60b6`.
+
+### Việc đã làm (thay cho DoD gốc)
+
+- ❌ **KHÔNG áp patch vào `feat/extract-revit-mcp-core`** — patch đó thực chất chép lại
+  code đã có trên main từ v0.8.6/v0.8.11. Vá lên feat chỉ nuôi thêm fork drift
+  (chính drift này đã từng làm mất hosted placement và spatial pack).
+- ✅ **Port `view_id` lên `main`** (`33d60b6`, v0.8.15) — khoảng trống thật duy nhất.
+  Ngữ nghĩa giữ nguyên bản feat (view-scoped collector), thêm validation: id không
+  phải View / là view template → lỗi `invalid_parameter` rõ ràng thay vì ArgumentException.
+  Đã lộ ra MCP tool surface (`revit_find_elements.view_id`).
+- ✅ Build R2026+R2027 0 error, 132/132 unit test, đã deploy add-in `0.8.15+33d60b6`
+  cho cả hai bản Revit trên máy dev RevitMCPServer.
+
+### Việc phía RevitLocalAssistant cần làm (thay bước "bump submodule feat")
+
+`main` giờ là **superset nghiêm ngặt** của `feat/extract-revit-mcp-core`. Re-pin submodule
+về `main` (sau khi `33d60b6` lên origin):
+
+```bash
+cd extern/RevitMCPCore && git fetch origin && git checkout origin/main
+cd ../.. && git add extern/RevitMCPCore
+git commit -m "chore: re-pin RevitMCPCore submodule -> main @ 33d60b6 (supersets feat branch)"
+```
+
+**⚠️ Lưu ý đổi tên khi re-pin:** các lệnh spatial trên feat mang tên trần; trên main
+chúng thuộc pack `spatial_*` (HTTP-only): `get_room_boundary` → `spatial_get_room_boundary`,
+`clearance_envelope` → `spatial_clearance_envelope`, `clearance_envelope_batch` →
+`spatial_clearance_envelope_batch`, `raycast_headroom` → `spatial_raycast_headroom`.
+Caller nào gọi tên trần phải đổi. `get_doors` giữ nguyên tên.
+
+**Bonus khi re-pin:** hosted `place_family_instance` (hostId → wall cut), build-truth
+`/health` (`gitCommit`/`gitState`/`buildTimestampUtc`/`commandCount`/`capabilityHash`,
+không cần token) — dùng nó để verify đúng DLL nào đang nạp trước khi tin kết quả test.
+
+### Acceptance tests của handoff (mục Repro) — vẫn dùng nguyên văn
+
+Hai test PowerShell ở mục "Repro / dữ liệu mẫu" chạy được y nguyên trên build main;
+kỳ vọng đều đạt. Thêm test thứ 3 cho `view_id`:
+
+```powershell
+# 3) VIEW_ID phải scope theo view (id lấy từ get_views)
+$v = fe('{"command":"find_elements","params":{"category":"OST_Rooms","view_id":<viewId>,"limit":5}}')
+#   EXPECT: total <= total của query không có view_id; view_id sai -> error invalid_parameter
+```
