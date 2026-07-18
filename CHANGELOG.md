@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-07-17
+
+- **Reverted the submodule pin back to `9c22e50`**, undoing the 2026-07-16 re-pin to `main`.
+  That re-pin was based on an upstream claim that `main` was a strict superset of the
+  `feat/extract-revit-mcp-core` branch. It is not: `query_where`, `update_where` and
+  `import_parameters` exist only on that branch (RevitMCPServer commit `5ac811d`). Pinning to
+  `main` removed the assistant's primary read/count/list tool, its primary edit tool and the
+  CSV/XLSX import commit path — the assistant was broken at runtime while all 192 unit tests
+  still passed, because they are pure logic and never reach Core.
+- Reverted the two tool renames that came with it: `spatial_get_room_boundary` →
+  `get_room_boundary`, `spatial_raycast_headroom` → `raycast_headroom`.
+- **Added `ToolSurfaceCoreContractTests`** (4 tests) asserting that every non-virtual tool in
+  `ToolSpecAdapter`, every command hard-coded in a `CallAsync(...)`, and every name in the
+  write gates actually exists in the pinned Core's `CommandRegistry`. Verified these fail —
+  naming the exact missing commands — when pinned back to the bad commit.
+
 ## 2026-07-16
 
 - **Re-pinned the `extern/RevitMCPCore` submodule** from the `feat/extract-revit-mcp-core`

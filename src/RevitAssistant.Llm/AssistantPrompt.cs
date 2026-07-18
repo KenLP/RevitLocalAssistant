@@ -180,9 +180,9 @@ public static class AssistantPrompt
             tra không gian, KHÔNG dùng để đọc/sửa tham số (vẫn là query_where/update_where):
             - **Cửa:** `get_doors` → mọi cửa kèm Width (m), vị trí (x,y) và Level. Dùng cho
               độ rộng thông thuỷ cửa / lối thoát hiểm.
-            - **Đường bao phòng:** `spatial_get_room_boundary(id?|number?)` → polyline đường bao
+            - **Đường bao phòng:** `get_room_boundary(id?|number?)` → polyline đường bao
               phòng (mặt hoàn thiện, diện tích tịnh). Dùng cho bề rộng hành lang, diện tích tịnh.
-            - **Chiều cao thông thuỷ:** `spatial_raycast_headroom(points:[{x,y}], floorZ, …)` →
+            - **Chiều cao thông thuỷ:** `raycast_headroom(points:[{x,y}], floorZ, …)` →
               headroom (m) tại từng điểm.
             - **Vẽ detail line:** `create_detail_line(start, end, viewId?, color?, weight?)` —
               CẦN XÁC NHẬN; đánh dấu / đo trực quan trong view.
