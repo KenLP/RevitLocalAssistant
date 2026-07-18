@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using RevitAssistant.Llm;
 using RevitAssistant.UI;
 
 namespace RevitAssistant;
@@ -16,6 +17,23 @@ internal sealed class RevitBridge : IRevitBridge
         bool dryRun = false,
         CancellationToken ct = default)
     {
+        // Deny-by-default, enforced again at the boundary. The orchestrator already
+        // rejects unknown tool names, but this is the last gate before Core — which
+        // registers ~90 commands including delete/create/move. Anything not in
+        // ToolPolicy never reaches the dispatcher, whoever called us.
+        if (!ToolPolicy.IsDispatchable(command))
+        {
+            return Task.FromResult(new JsonObject
+            {
+                ["ok"] = false,
+                ["error"] = new JsonObject
+                {
+                    ["code"] = "tool_not_allowed",
+                    ["message"] = $"Lệnh '{command}' không nằm trong danh sách được phép.",
+                },
+            });
+        }
+
         var dispatcher = App.Dispatcher;
         if (dispatcher is null)
         {

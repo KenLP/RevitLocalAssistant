@@ -23,20 +23,8 @@ namespace RevitAssistant.UI;
 /// </summary>
 public sealed class OrchestratorChatService : IChatService
 {
-    private static readonly HashSet<string> WriteTools =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "update_where", "set_parameter", "set_parameter_batch", "rename_element",
-        };
-
-    // Write commands that DON'T support dryRun in Core — we build a preview from
-    // args alone, then execute for real on confirm (no pre-flight Revit call).
-    private static readonly HashSet<string> ConfirmExecTools =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "change_element_type", "set_level_elevation", "apply_view_template",
-            "create_detail_line",
-        };
+    // Which tools exist, which mutate the model, and how each one is previewed all
+    // come from ToolPolicy (deny-by-default). See RevitAssistant.Llm.ToolPolicy.
 
     private const int MaxIterations = 6;
 
@@ -52,7 +40,16 @@ public sealed class OrchestratorChatService : IChatService
     private readonly List<ChatMessage> _conversation = new();
     private readonly Dictionary<string, double> _levelElev = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ResultTable> _turnTables = new();
-    private ToolCall? _pendingWrite;
+    private PendingWrite? _pendingWrite;
+
+    /// <summary>
+    /// A model write that has been previewed and is awaiting the user's confirmation,
+    /// pinned to the document and the exact outcome the user was shown. ConfirmAsync
+    /// re-checks both before committing, so switching project or editing the model
+    /// while the confirmation sits on screen can never commit against a different
+    /// document or a different set of elements than the preview described.
+    /// </summary>
+    private sealed record PendingWrite(ToolCall Call, string DocumentKey, string Digest);
     private UndoPayload? _lastUndo;
     private ImportedTable? _pendingImport;
     private ImportPending? _pendingImportCommit;
@@ -324,11 +321,37 @@ public sealed class OrchestratorChatService : IChatService
         if (_pendingWrite is null)
             return new ChatTurn(new[] { new ChatReply("Không có thay đổi nào đang chờ xác nhận.") });
 
-        var write = _pendingWrite;
+        var pending = _pendingWrite;
         _pendingWrite = null;
         _turnTables.Clear();
 
+        var write = pending.Call;
         var replies = new List<ChatReply>();
+
+        // The preview was computed against one document and one specific outcome. While it
+        // sat on screen the user could have switched project, changed view, or edited the
+        // model — committing now could touch a different element set than was approved.
+        // Re-verify both; on any mismatch refuse and make the user preview again.
+        var docKey = await DocumentKeyAsync(ct).ConfigureAwait(false);
+        if (!string.Equals(docKey, pending.DocumentKey, StringComparison.Ordinal))
+        {
+            AppendToolResult(write, JsonResultError("document_changed",
+                "Document changed between preview and confirm; write refused."));
+            return new ChatTurn(new[] { new ChatReply(
+                "⚠️ Tài liệu đã thay đổi kể từ lúc xem trước — chưa ghi gì cả. " +
+                "Hãy yêu cầu lại để xem trước trên tài liệu hiện tại.", IsError: true) });
+        }
+
+        var recheck = await ExecuteAsync(write, dryRun: true, ct).ConfigureAwait(false);
+        if (!IsOk(recheck) || !string.Equals(DigestOf(recheck), pending.Digest, StringComparison.Ordinal))
+        {
+            AppendToolResult(write, JsonResultError("preview_stale",
+                "Model changed between preview and confirm; write refused."));
+            return new ChatTurn(new[] { new ChatReply(
+                "⚠️ Model đã thay đổi kể từ lúc xem trước nên kết quả sẽ khác — chưa ghi gì cả. " +
+                "Hãy yêu cầu lại để xem trước bản mới.", IsError: true) });
+        }
+
         var result = await ExecuteAsync(write, dryRun: false, ct).ConfigureAwait(false);
         AppendToolResult(write, result);
 
@@ -388,9 +411,36 @@ public sealed class OrchestratorChatService : IChatService
         }
         if (_pendingWrite is null) return;
         // Answer the dangling tool_call so the conversation stays well-formed.
-        AppendToolResult(_pendingWrite,
+        AppendToolResult(_pendingWrite.Call,
             JsonResultError("cancelled", "Người dùng đã hủy thao tác này."));
         _pendingWrite = null;
+    }
+
+    // ── Preview ↔ commit binding ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Identity of the document a preview was computed against. Title + path only:
+    /// isModified/heartbeat-style fields change constantly and would false-positive.
+    /// </summary>
+    private async Task<string> DocumentKeyAsync(CancellationToken ct)
+    {
+        var env = await _revit.CallAsync("get_document_info", new JsonObject(), false, ct)
+                              .ConfigureAwait(false);
+        var data = env["data"] as JsonObject;
+        return string.Concat(data?["title"]?.ToString() ?? "", " ", data?["pathName"]?.ToString() ?? "");
+    }
+
+    /// <summary>
+    /// Fingerprint of what a dry-run says WOULD happen — the matched elements and their
+    /// before/after values. Comparing it at confirm time catches any model change that
+    /// would make the commit differ from the preview the user approved.
+    /// </summary>
+    private static string DigestOf(JsonObject dryRunResult)
+    {
+        var payload = dryRunResult["data"]?.ToJsonString() ?? "";
+        var hash = System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(payload));
+        return Convert.ToHexString(hash);
     }
 
     // ── Undo ─────────────────────────────────────────────────────────────────
@@ -682,6 +732,17 @@ public sealed class OrchestratorChatService : IChatService
             {
                 var tc = calls[k];
 
+                // Deny-by-default. The model may only name tools in ToolPolicy; a
+                // hallucinated name — or a real Core command we never exposed, such as
+                // delete_elements — is answered with an error and never dispatched.
+                if (!ToolPolicy.IsLlmCallable(tc.FunctionName))
+                {
+                    AppendToolResult(tc, JsonResultError("tool_not_allowed",
+                        $"Tool '{tc.FunctionName}' không tồn tại. Chỉ dùng các tool đã được cung cấp."));
+                    reprompt = true;
+                    continue;
+                }
+
                 if (tc.FunctionName == "echo_interpretation")
                 {
                     var echo = ParseEcho(tc);
@@ -737,18 +798,12 @@ public sealed class OrchestratorChatService : IChatService
                     continue;
                 }
 
-                if (ConfirmExecTools.Contains(tc.FunctionName))
+                if (ToolPolicy.RequiresConfirmation(tc.FunctionName))
                 {
-                    // Build a preview from args alone (no Revit call yet).
-                    // The command executes for real only when the user confirms.
-                    var preview = BuildConfirmExecPreview(tc);
-                    _pendingWrite = tc;
-                    DeferRemaining(calls, k + 1);
-                    return new ChatTurn(replies, preview);
-                }
-
-                if (WriteTools.Contains(tc.FunctionName))
-                {
+                    // Every model write dry-runs first. Core runs ModelWrite commands in a
+                    // transaction and rolls back on dryRun, so this both validates the
+                    // arguments against the real model and captures the exact outcome the
+                    // user is about to approve.
                     var dry = await ExecuteAsync(tc, dryRun: true, ct).ConfigureAwait(false);
 
                     if (!IsOk(dry))
@@ -763,9 +818,16 @@ public sealed class OrchestratorChatService : IChatService
                         break;
                     }
 
-                    _pendingWrite = tc;
+                    _pendingWrite = new PendingWrite(
+                        tc,
+                        await DocumentKeyAsync(ct).ConfigureAwait(false),
+                        DigestOf(dry));
                     DeferRemaining(calls, k + 1);
-                    return new ChatTurn(replies, PreviewBuilder.Build(tc, dry));
+
+                    var preview = ToolPolicy.PreviewFor(tc.FunctionName) == PreviewStrategy.FromDryRun
+                        ? PreviewBuilder.Build(tc, dry)
+                        : BuildConfirmExecPreview(tc);
+                    return new ChatTurn(replies, preview);
                 }
 
                 // Read tool — safe to run and feed straight back.

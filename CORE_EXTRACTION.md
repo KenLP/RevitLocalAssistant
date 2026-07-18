@@ -1,8 +1,9 @@
 # Core Extraction Task Brief
 
 > **[HOÀN TẤT — tài liệu lịch sử]** Việc tách Core đã xong; `extern/RevitMCPCore` hiện là git
-> submodule, pin ở `origin/main` commit `33d60b6` (v0.8.15, 91 command — cập nhật 2026-07-16,
-> re-pin từ nhánh `feat/extract-revit-mcp-core` @ `9c22e50` khi `main` trở thành superset).
+> submodule, pin ở `9c22e50` trên nhánh `feat/extract-revit-mcp-core` (cập nhật 2026-07-17).
+> ⚠️ KHÔNG re-pin sang `main`: `query_where`/`update_where`/`import_parameters` chỉ có trên
+> nhánh này — xem cảnh báo chi tiết ở đầu PLAN.md.
 > Nội dung dưới đây mô tả brief gốc tại thời điểm `e6b00b8` (v0.8.0) — giữ nguyên làm hồ sơ
 > lịch sử, không phản ánh trạng thái hiện tại.
 

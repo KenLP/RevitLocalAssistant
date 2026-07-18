@@ -276,10 +276,31 @@ fallback) — góp phần gây chẩn đoán nhầm; đã sửa docstring trong 
 - ✅ Build R2026+R2027 0 error, 132/132 unit test, đã deploy add-in `0.8.15+33d60b6`
   cho cả hai bản Revit trên máy dev RevitMCPServer.
 
+### ⛔ ĐÍNH CHÍNH (2026-07-17, phía RevitLocalAssistant) — claim "superset" bên dưới là SAI
+
+Đã re-pin theo hướng dẫn bên dưới và **assistant vỡ**. `main` **KHÔNG** phải superset của
+`feat/extract-revit-mcp-core`. Ba command chỉ tồn tại trên nhánh feat (commit `5ac811d`),
+không có trên `main`:
+
+| Command | Vai trò ở RevitLocalAssistant |
+|---|---|
+| `query_where` | Tool CHÍNH để đọc/đếm/liệt kê phần tử |
+| `update_where` | Tool CHÍNH để sửa tham số (nằm trong write gate) |
+| `import_parameters` | Commit path của import CSV/XLSX |
+
+Kiểm chứng: `git grep -l "query_where\|update_where" 33d60b6 -- src/` → rỗng;
+với `9c22e50` → có `QueryWhereCommand.cs` + `UpdateWhereCommand.cs`.
+
+192 unit test vẫn pass vì chúng là logic thuần, không bao giờ gọi Core → không bắt được.
+Đã revert pin về `9c22e50` và thêm `ToolSurfaceCoreContractTests` để fail nhanh nếu tái diễn.
+
+**Chỉ re-pin sang `main` sau khi 3 command trên được port lên `main` upstream.** Phần dưới
+giữ nguyên làm hồ sơ.
+
 ### Việc phía RevitLocalAssistant cần làm (thay bước "bump submodule feat")
 
-`main` giờ là **superset nghiêm ngặt** của `feat/extract-revit-mcp-core`. Re-pin submodule
-về `main` (sau khi `33d60b6` lên origin):
+~~`main` giờ là **superset nghiêm ngặt** của `feat/extract-revit-mcp-core`~~ (SAI — xem đính
+chính ở trên). Re-pin submodule về `main` (sau khi `33d60b6` lên origin):
 
 ```bash
 cd extern/RevitMCPCore && git fetch origin && git checkout origin/main

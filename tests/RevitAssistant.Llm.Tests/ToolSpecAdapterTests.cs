@@ -34,8 +34,8 @@ public sealed class ToolSpecAdapterTests
     [InlineData("echo_interpretation")]
     [InlineData("clarify")]
     [InlineData("get_doors")]
-    [InlineData("spatial_get_room_boundary")]
-    [InlineData("spatial_raycast_headroom")]
+    [InlineData("get_room_boundary")]
+    [InlineData("raycast_headroom")]
     [InlineData("create_detail_line")]
     public void BuildToolSurface_ContainsTool(string toolName)
     {

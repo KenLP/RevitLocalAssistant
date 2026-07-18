@@ -4,15 +4,19 @@
 >
 > Prepared for Ken Phuc — 2026-06-15.
 
-> **Current submodule pin (2026-07-16):** `extern/RevitMCPCore` @ `origin/main` commit
-> `33d60b6` (v0.8.15) — re-pinned from the `feat/extract-revit-mcp-core` fork (`9c22e50`) once
-> `main` became a strict superset (91 commands total). Two spatial-QC tools carry a `spatial_`
-> prefix on `main`: `get_room_boundary` → `spatial_get_room_boundary`,
-> `raycast_headroom` → `spatial_raycast_headroom`; `get_doors` and `create_detail_line` kept
-> their names. See [docs/handoffs/HANDOFF_revitmcp-find-elements-fix.md](docs/handoffs/HANDOFF_revitmcp-find-elements-fix.md)
-> for how the fork's remaining gap (`view_id`) was closed upstream. The section below documents
-> the original 2026-06-15 inspection as-is; it is historical context for the decisions made,
-> not a live version tracker.
+> **Current submodule pin (2026-07-17):** `extern/RevitMCPCore` @ `9c22e50` on the
+> `feat/extract-revit-mcp-core` branch.
+>
+> ⚠️ **Do not re-pin to `main` without porting three commands first.** `main` is *not* a
+> superset of this branch: `query_where`, `update_where` and `import_parameters` exist only
+> here (added in RevitMCPServer commit `5ac811d`). They are the assistant's primary
+> read/count/list tool, its primary edit tool, and the CSV/XLSX import commit path — pinning
+> to `main` silently removes all three and the assistant breaks at runtime while every unit
+> test still passes. This happened once and was reverted; `ToolSurfaceCoreContractTests` now
+> fails fast on it. Re-pinning is only safe after those commands land on `main` upstream.
+>
+> The section below documents the original 2026-06-15 inspection as-is; it is historical
+> context for the decisions made, not a live version tracker.
 
 > **Decisions locked (2026-06-15):** Core sharing = **git submodule** (extract `RevitMCP.Core` from
 > the MCP repo first). Default LLM = **Qwen2.5-7B-Instruct (Q4_K_M)**, 14B opt-in. Installer =

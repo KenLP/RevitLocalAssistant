@@ -220,41 +220,63 @@ public sealed class OrchestratorChatServiceTests
 
     // ── Write flow ───────────────────────────────────────────────────────────
 
+    // Writes are exercised through update_where — the write tool the model is actually
+    // allowed to name. set_parameter_batch is internal-only (ToolPolicy.LlmExposed=false),
+    // so a model naming it is rejected before dispatch.
+    private const string UpdateWhereArgs =
+        """{"category":"OST_Walls","set":{"parameter":"Comments","value":"OK"}}""";
+
+    private static JsonObject UpdateWhereDry() => Ok(new JsonObject
+    {
+        ["matchedCount"] = 2,
+        ["applied"] = 2,
+        ["failed"] = 0,
+        ["affectedInstances"] = 2,
+        ["scope"] = "instance",
+    });
+
+    /// <summary>Doc identity must be stable so the preview↔commit check passes.</summary>
+    private static JsonObject DocInfo() => Ok(new JsonObject
+    {
+        ["title"] = "Test.rvt",
+        ["pathName"] = @"C:\models\Test.rvt",
+    });
+
     [Fact]
     public async Task WriteFlow_DryRunsAndReturnsPending_NoCommitYet()
     {
         var llm = new FakeLlm(
-            Calls(Echo(), Tc("set_parameter_batch",
-                """{"ids":[1,2],"parameterName":"Comments","value":"OK"}""", "w1")));
-        var bridge = new FakeBridge((_, _, _) =>
-            Ok(new JsonObject { ["total"] = 2, ["succeeded"] = 2, ["failed"] = 0 }));
+            Calls(Echo(), Tc("update_where", UpdateWhereArgs, "w1")));
+        var bridge = new FakeBridge((cmd, _, _) =>
+            cmd == "get_document_info" ? DocInfo() : UpdateWhereDry());
 
         var svc = Make(llm, bridge);
         var turn = await svc.SendAsync("đặt comments cho tường");
 
         turn.Pending.Should().NotBeNull();
         turn.Pending!.TotalCount.Should().Be(2);
-        bridge.Calls.Should().ContainSingle();
-        bridge.Calls[0].DryRun.Should().BeTrue("nothing is committed before confirm");
+        bridge.Calls.Should().NotContain(c => c.Cmd == "update_where" && !c.DryRun,
+            "nothing is committed before confirm");
+        bridge.Calls.Should().ContainSingle(c => c.Cmd == "update_where" && c.DryRun);
     }
 
     [Fact]
     public async Task Confirm_CommitsForReal_ThenContinuesToFinalText()
     {
         var llm = new FakeLlm(
-            Calls(Echo(), Tc("set_parameter_batch",
-                """{"ids":[1,2],"parameterName":"Comments","value":"OK"}""", "w1")),
+            Calls(Echo(), Tc("update_where", UpdateWhereArgs, "w1")),
             Text("Đã cập nhật xong."));
-        var bridge = new FakeBridge((_, _, dry) => dry
-            ? Ok(new JsonObject { ["total"] = 2, ["succeeded"] = 2, ["failed"] = 0 })
+        var bridge = new FakeBridge((cmd, _, dry) =>
+            cmd == "get_document_info" ? DocInfo()
+            : dry ? UpdateWhereDry()
             : Ok(new JsonObject { ["changeSummary"] = "Set 'Comments' on 2/2 elements" }));
 
         var svc = Make(llm, bridge);
         await svc.SendAsync("đặt comments");
         var turn = await svc.ConfirmAsync();
 
-        bridge.Calls.Should().HaveCount(2);
-        bridge.Calls[1].DryRun.Should().BeFalse("confirm commits for real");
+        bridge.Calls.Should().ContainSingle(c => c.Cmd == "update_where" && !c.DryRun,
+            "confirm commits exactly once, for real");
         turn.Pending.Should().BeNull();
         turn.Replies.Should().Contain(r => r.Text.Contains("✅"));
         turn.Replies.Should().Contain(r => r.Text == "Đã cập nhật xong.");
@@ -264,8 +286,7 @@ public sealed class OrchestratorChatServiceTests
     public async Task DryRunFails_FeedsBackSilently_ModelSelfCorrects()
     {
         var llm = new FakeLlm(
-            Calls(Echo(), Tc("set_parameter_batch",
-                """{"ids":[1],"parameterName":"Nope","value":"x"}""", "w1")),
+            Calls(Echo(), Tc("update_where", UpdateWhereArgs, "w1")),
             Text("Xin lỗi, tham số không tồn tại."));
         var bridge = new FakeBridge((_, _, _) => Err("not_found", "Parameter 'Nope' not found."));
 
@@ -332,15 +353,113 @@ public sealed class OrchestratorChatServiceTests
 
     // ── Cancel keeps conversation usable ─────────────────────────────────────
 
+    // ── Deny-by-default (P0-C) ───────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("delete_elements")]        // real Core command, never exposed
+    [InlineData("move_element")]           // real Core command, never exposed
+    [InlineData("set_parameter_batch")]    // internal-only, not model-callable
+    [InlineData("totally_made_up_tool")]   // hallucinated
+    public async Task DisallowedTool_IsNeverDispatched_AndModelSelfCorrects(string toolName)
+    {
+        var llm = new FakeLlm(
+            Calls(Echo(), Tc(toolName, """{"ids":[1]}""", "x1")),
+            Text("Xin lỗi, tôi không làm được việc đó."));
+        var bridge = new FakeBridge((_, _, _) => Ok());
+
+        var svc = Make(llm, bridge);
+        var turn = await svc.SendAsync("xoá hết đi");
+
+        bridge.Calls.Should().NotContain(c => c.Cmd == toolName,
+            because: $"'{toolName}' must never reach Revit");
+        turn.Pending.Should().BeNull("a blocked tool must not produce a confirmable write");
+        turn.Replies.Should().Contain(r => r.Text == "Xin lỗi, tôi không làm được việc đó.");
+    }
+
+    [Theory]
+    [InlineData("tag_all_in_view")]
+    [InlineData("copy_parameters")]
+    [InlineData("configure_schedule")]
+    public async Task PreviouslyUngatedWrites_NowRequireConfirmation(string toolName)
+    {
+        var llm = new FakeLlm(Calls(Echo(), Tc(toolName, """{"category":"OST_Doors"}""", "w1")));
+        var bridge = new FakeBridge((cmd, _, _) =>
+            cmd == "get_document_info" ? DocInfo() : Ok(new JsonObject { ["changeSummary"] = "x" }));
+
+        var svc = Make(llm, bridge);
+        var turn = await svc.SendAsync("làm đi");
+
+        turn.Pending.Should().NotBeNull($"'{toolName}' mutates the model and must be confirmed");
+        bridge.Calls.Should().NotContain(c => c.Cmd == toolName && !c.DryRun,
+            because: "nothing may be committed before the user confirms");
+    }
+
+    // ── Preview ↔ commit binding (P0-D) ──────────────────────────────────────
+
+    [Fact]
+    public async Task Confirm_RefusesToCommit_WhenDocumentChangedSincePreview()
+    {
+        var docCalls = 0;
+        var llm = new FakeLlm(Calls(Echo(), Tc("update_where", UpdateWhereArgs, "w1")));
+        var bridge = new FakeBridge((cmd, _, _) =>
+        {
+            if (cmd != "get_document_info") return UpdateWhereDry();
+            docCalls++;
+            // Second lookup (at confirm time) reports a different project.
+            return Ok(new JsonObject
+            {
+                ["title"] = docCalls == 1 ? "Test.rvt" : "OtherProject.rvt",
+                ["pathName"] = docCalls == 1 ? @"C:\models\Test.rvt" : @"C:\models\Other.rvt",
+            });
+        });
+
+        var svc = Make(llm, bridge);
+        await svc.SendAsync("đặt comments");
+        var turn = await svc.ConfirmAsync();
+
+        bridge.Calls.Should().NotContain(c => c.Cmd == "update_where" && !c.DryRun,
+            because: "the preview was computed against a different document");
+        turn.Replies.Should().Contain(r => r.IsError);
+    }
+
+    [Fact]
+    public async Task Confirm_RefusesToCommit_WhenModelChangedSincePreview()
+    {
+        var dryRuns = 0;
+        var llm = new FakeLlm(Calls(Echo(), Tc("update_where", UpdateWhereArgs, "w1")));
+        var bridge = new FakeBridge((cmd, _, dry) =>
+        {
+            if (cmd == "get_document_info") return DocInfo();
+            if (!dry) return Ok(new JsonObject { ["changeSummary"] = "committed" });
+            dryRuns++;
+            // Re-check at confirm time now matches MORE elements than the preview showed.
+            return Ok(new JsonObject
+            {
+                ["matchedCount"] = dryRuns == 1 ? 2 : 7,
+                ["applied"] = dryRuns == 1 ? 2 : 7,
+                ["failed"] = 0,
+                ["affectedInstances"] = dryRuns == 1 ? 2 : 7,
+                ["scope"] = "instance",
+            });
+        });
+
+        var svc = Make(llm, bridge);
+        await svc.SendAsync("đặt comments");
+        var turn = await svc.ConfirmAsync();
+
+        bridge.Calls.Should().NotContain(c => c.Cmd == "update_where" && !c.DryRun,
+            because: "the model changed, so committing would touch a different element set than approved");
+        turn.Replies.Should().Contain(r => r.IsError);
+    }
+
     [Fact]
     public async Task Cancel_ThenNewSend_Works()
     {
         var llm = new FakeLlm(
-            Calls(Echo(), Tc("set_parameter_batch",
-                """{"ids":[1],"parameterName":"Comments","value":"x"}""", "w1")),
+            Calls(Echo(), Tc("update_where", UpdateWhereArgs, "w1")),
             Text("Đã hiểu, không thay đổi gì."));
-        var bridge = new FakeBridge((_, _, _) =>
-            Ok(new JsonObject { ["total"] = 1, ["succeeded"] = 1, ["failed"] = 0 }));
+        var bridge = new FakeBridge((cmd, _, _) =>
+            cmd == "get_document_info" ? DocInfo() : UpdateWhereDry());
 
         var svc = Make(llm, bridge);
         var first = await svc.SendAsync("đặt comments");
