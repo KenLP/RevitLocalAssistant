@@ -107,21 +107,18 @@ public sealed class ToolSurfaceCoreContractTests
     }
 
     [Fact]
-    public void WriteGatedTools_ExistInCoreRegistry()
+    public void EveryDispatchablePolicyEntry_ExistsInCoreRegistry()
     {
         var core = CoreCommandNames();
 
-        // Mirrors OrchestratorChatService.WriteTools + ConfirmExecTools. A gate
-        // naming a command Core no longer has silently stops gating anything.
-        string[] gated =
-        [
-            "update_where", "set_parameter", "set_parameter_batch", "rename_element",
-            "change_element_type", "set_level_elevation", "apply_view_template", "create_detail_line",
-        ];
-
-        var missing = gated.Where(n => !core.Contains(n)).OrderBy(n => n).ToList();
+        var missing = ToolPolicy.All
+            .Where(e => e.IsDispatchable && !core.Contains(e.Name))
+            .Select(e => e.Name)
+            .OrderBy(n => n)
+            .ToList();
 
         missing.Should().BeEmpty(
-            because: "a write gate that names a non-existent command protects nothing");
+            because: "ToolPolicy is the allowlist — an entry Core does not have is either a " +
+                     "dead tool or, if it is a write gate, a gate that protects nothing");
     }
 }

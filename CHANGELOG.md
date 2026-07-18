@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-07-17 (2) — write-path safety
+
+- **Deny-by-default tool policy (P0-C).** New `ToolPolicy` is the single source of truth for
+  which tools exist, which mutate the model, and how each is previewed. Enforced twice: the
+  orchestrator rejects any name the model is not allowed to use, and `RevitBridge` refuses to
+  hand an unlisted name to Core. Previously anything not in two hard-coded write sets fell
+  through to a plain dispatch, so a model naming a real-but-unexposed Core command
+  (`delete_elements`, `move_element`, …) reached Revit with no preview and no confirmation.
+- **Four writes that were reachable without confirmation are now gated**: `tag_all_in_view`,
+  `copy_parameters`, `configure_schedule` and `create_detail_line`. `raycast_headroom` is
+  classified `TransientWrite` — Core marks it non-read-only, but it creates and deletes its
+  own scratch view inside the transaction, so it dispatches like a read.
+- **Every model write now dry-runs before the preview.** Core runs `ModelWrite` commands in a
+  transaction and rolls back on `dryRun`, so the previous "these commands don't support
+  dryRun" assumption was wrong. Arguments are now validated against the real model before the
+  user is asked to approve anything.
+- **Preview is bound to the document and the outcome (P0-D).** A pending write records the
+  document identity plus a digest of the dry-run result. `ConfirmAsync` re-checks both and
+  refuses to commit if the user switched project or the model changed while the confirmation
+  was on screen — previously confirm simply re-ran the call against whatever document was
+  active, so it could touch a different element set than the one previewed.
+- Tests: added `ToolPolicyTests` (policy invariants) and orchestrator tests for blocked tools
+  and both stale-preview paths. Verified each fails when the corresponding gate is removed.
+  Write-flow tests now exercise `update_where` rather than the internal-only
+  `set_parameter_batch`. Suite: 229 passing.
+
 ## 2026-07-17
 
 - **Reverted the submodule pin back to `9c22e50`**, undoing the 2026-07-16 re-pin to `main`.
