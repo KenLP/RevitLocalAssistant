@@ -22,6 +22,23 @@ public sealed class FileFeedbackSink : IFeedbackSink
 
     public string FilePath => _path;
 
+    /// <summary>
+    /// Deletes the diagnostics log. The user owns this data and must be able to get rid of
+    /// it without hunting through %APPDATA% by hand.
+    /// </summary>
+    public void Clear()
+    {
+        try
+        {
+            lock (_gate)
+                if (File.Exists(_path)) File.Delete(_path);
+        }
+        catch
+        {
+            // same contract as Record: diagnostics must never break the chat
+        }
+    }
+
     public void Record(FeedbackEntry entry)
     {
         try
@@ -29,13 +46,15 @@ public sealed class FileFeedbackSink : IFeedbackSink
             var dir = System.IO.Path.GetDirectoryName(_path);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
+            // Model paths and the account name are not what makes feedback useful, but they
+            // are what makes this file sensitive to hand over. Scrub before it touches disk.
             var line = new JsonObject
             {
                 ["time"] = entry.Time.ToString("o"),
                 ["rating"] = entry.Liked ? "up" : "down",
-                ["message"] = entry.MessageText,
-                ["reason"] = entry.Reason,
-                ["context"] = entry.ContextSnapshot,
+                ["message"] = DiagnosticsRedactor.Redact(entry.MessageText),
+                ["reason"] = DiagnosticsRedactor.Redact(entry.Reason),
+                ["context"] = DiagnosticsRedactor.Redact(entry.ContextSnapshot),
             }.ToJsonString();
 
             lock (_gate)

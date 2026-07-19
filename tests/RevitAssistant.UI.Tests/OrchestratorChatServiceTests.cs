@@ -452,6 +452,114 @@ public sealed class OrchestratorChatServiceTests
         turn.Replies.Should().Contain(r => r.IsError);
     }
 
+    // ── Undo safety (P1) ─────────────────────────────────────────────────────
+
+    /// <summary>update_where result whose before-values are display strings.</summary>
+    private static JsonObject UpdateWhereCommitted(string scope = "instance") => Ok(new JsonObject
+    {
+        ["setParameter"] = "Comments",
+        ["scope"] = scope,
+        ["results"] = new JsonArray(
+            new JsonObject { ["id"] = 101, ["ok"] = true, ["before"] = "old A" },
+            new JsonObject { ["id"] = 102, ["ok"] = true, ["before"] = "old B" }),
+    });
+
+    private static FakeBridge WriteBridge(
+        Func<string, JsonObject, bool, JsonObject>? overrides = null,
+        string scope = "instance",
+        string storageType = "String") =>
+        new((cmd, args, dry) =>
+        {
+            var custom = overrides?.Invoke(cmd, args, dry);
+            if (custom is not null) return custom;
+            return cmd switch
+            {
+                "get_document_info" => DocInfo(),
+                "get_parameter" => Ok(new JsonObject { ["storageType"] = storageType }),
+                "update_where" => dry ? UpdateWhereDry() : UpdateWhereCommitted(scope),
+                "set_parameter_batch" => Ok(new JsonObject { ["failed"] = 0, ["succeeded"] = 2 }),
+                _ => Ok(),
+            };
+        });
+
+    private async Task<(OrchestratorChatService Svc, FakeBridge Bridge, ChatTurn Confirmed)>
+        CommitAWriteAsync(FakeBridge bridge)
+    {
+        var llm = new FakeLlm(
+            Calls(Echo(), Tc("update_where", UpdateWhereArgs, "w1")),
+            Text("Xong."));
+        var svc = Make(llm, bridge);
+        await svc.SendAsync("đặt comments");
+        var confirmed = await svc.ConfirmAsync();
+        return (svc, bridge, confirmed);
+    }
+
+    [Fact]
+    public async Task Undo_IsOffered_ForInstanceScopedStringParameter()
+    {
+        var (_, _, confirmed) = await CommitAWriteAsync(WriteBridge());
+        confirmed.CanUndo.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Undo_IsNotOffered_ForTypeScopedEdit()
+    {
+        // The restore would address instance ids for a parameter living on the type.
+        var (_, _, confirmed) = await CommitAWriteAsync(WriteBridge(scope: "type"));
+        confirmed.CanUndo.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("Double")]     // before-value came back unit-formatted ("2100 mm")
+    [InlineData("Integer")]
+    [InlineData("ElementId")]  // before-value came back as the target's NAME
+    public async Task Undo_IsNotOffered_WhenBeforeValueCannotRoundTrip(string storageType)
+    {
+        var (_, _, confirmed) = await CommitAWriteAsync(WriteBridge(storageType: storageType));
+        confirmed.CanUndo.Should().BeFalse(
+            because: $"a {storageType} display string cannot be written back faithfully");
+    }
+
+    [Fact]
+    public async Task Undo_RestoresAtomically_AndOnlyAfterProvingItWouldSucceed()
+    {
+        var (svc, bridge, _) = await CommitAWriteAsync(WriteBridge());
+        bridge.Calls.Clear();
+
+        var turn = await svc.UndoAsync();
+
+        turn.Replies.Should().Contain(r => r.Text.Contains("✅"));
+        var restores = bridge.Calls.Where(c => c.Cmd == "set_parameter_batch").ToList();
+        restores.Should().Contain(c => c.DryRun, "the restore is proven before it is applied");
+        restores.Should().Contain(c => !c.DryRun);
+        restores.Where(c => !c.DryRun).Should()
+            .OnlyContain(c => c.Args["atomic"]!.GetValue<bool>(),
+                because: "a restore must not half-apply");
+    }
+
+    [Fact]
+    public async Task Undo_KeepsUndoState_WhenTheRestoreWouldFail()
+    {
+        var bridge = WriteBridge((cmd, _, dry) =>
+            // The rehearsal reports failures, so nothing should be written.
+            cmd == "set_parameter_batch" && dry
+                ? Ok(new JsonObject { ["failed"] = 2, ["succeeded"] = 0 })
+                : null);
+
+        var (svc, b, _) = await CommitAWriteAsync(bridge);
+        b.Calls.Clear();
+
+        var first = await svc.UndoAsync();
+
+        first.Replies.Should().Contain(r => r.IsError);
+        b.Calls.Should().NotContain(c => c.Cmd == "set_parameter_batch" && !c.DryRun,
+            because: "the rehearsal failed, so the model must be left alone");
+
+        // The state survives so the user can retry rather than being stranded.
+        var second = await svc.UndoAsync();
+        second.Replies.Should().NotContain(r => r.Text.Contains("Không có thao tác nào để hoàn tác"));
+    }
+
     [Fact]
     public async Task Cancel_ThenNewSend_Works()
     {

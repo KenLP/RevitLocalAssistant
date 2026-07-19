@@ -1,5 +1,50 @@
 # Changelog
 
+## 2026-07-18 — undo/import correctness, offline + privacy enforcement
+
+### P1
+
+- **Undo is now refused where it cannot restore faithfully.** `update_where` records
+  before-values as display strings (`Parameter.AsValueString`), which only round-trips for
+  String storage — a Double comes back unit-formatted ("2100 mm") and an ElementId comes back
+  as the target's *name*, so feeding either back wrote the wrong value or failed. A type-scope
+  edit was worse: the restore addressed instance ids for a parameter living on the type. Undo
+  is now offered only for instance-scope String parameters; the storage type is probed via
+  `get_parameter` at capture time.
+- **Undo no longer half-applies or loses its state.** Restores run `atomic: true`, every group
+  is rehearsed with a dry-run and nothing is written unless all groups pass, and the undo state
+  is cleared only after a fully successful restore — previously it was dropped *before* the
+  restore ran, so a failure left the user with a changed model and no way back.
+- **Import now validates for real.** The dry-run calls `import_parameters` with `dryRun: true`
+  (Core runs ModelWrite in a transaction and rolls back), so parameter existence, read-only
+  status, storage type and whether the value actually took are all proven before the user
+  confirms. Previously the "dry-run" only built a lookup, and the commit was the first genuine
+  write attempt. Commit reuses the same item builder, so what was validated is what is written.
+- **Ambiguous and truncated imports are blocked** instead of silently guessing: duplicate match
+  keys used to first-win (writing a row's data to an arbitrary one of the matching elements),
+  and a category at/over the 5000-element fetch limit produced an incomplete lookup that
+  quietly turned matched rows into "not found".
+- **Stubs fail loudly.** `ComplianceEvaluator.EvaluateAsync` returned an empty list — which
+  reads as "no violations" for a model it never evaluated — and `ModelSchemaExporter.Export`
+  returned `{}`, silently stripping the prompt of real category/parameter names. Both now throw
+  `NotImplementedException`. Neither had production callers.
+
+### P2
+
+- **Loopback is enforced by default.** The Ollama endpoint came from an environment variable
+  with no validation, so a stray value could ship prompts — which quote real project and
+  parameter data — off-box, in cleartext. Remote endpoints now require
+  `REVIT_ASSISTANT_ALLOW_REMOTE_LLM=1` *and* https; anything rejected falls back to loopback
+  and tells the user why rather than silently ignoring their setting.
+- **Diagnostics are redacted.** Feedback entries wrote the assistant's reply and a conversation
+  snapshot verbatim, routinely including full model paths and the Windows account name. Paths
+  (drive, UNC and JSON-escaped) and the user name are now scrubbed before the log touches disk,
+  and `FileFeedbackSink.Clear()` lets the user delete the log.
+- **CSV export defuses formula injection.** Cells starting `=`, `+`, `-` or `@` are exported as
+  text, so a Comments value like `=HYPERLINK(...)` no longer becomes a live formula on open.
+
+Suite: 263 passing. Each new guard was verified to fail when its check is removed.
+
 ## 2026-07-17 (2) — write-path safety
 
 - **Deny-by-default tool policy (P0-C).** New `ToolPolicy` is the single source of truth for

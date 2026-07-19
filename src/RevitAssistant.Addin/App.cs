@@ -75,22 +75,37 @@ public sealed class App : IExternalApplication
     {
         // Phase 4: real orchestrator — local Ollama + Revit dispatcher bridge.
         // Overridable without rebuild (also used by the Phase 7 installer):
-        //   REVIT_ASSISTANT_OLLAMA_URL  (default http://localhost:11434)
-        //   REVIT_ASSISTANT_MODEL       (default qwen2.5:7b-instruct)
-        var baseUrl = Environment.GetEnvironmentVariable("REVIT_ASSISTANT_OLLAMA_URL")
-                      ?? "http://localhost:11434";
+        //   REVIT_ASSISTANT_OLLAMA_URL       (default http://localhost:11434)
+        //   REVIT_ASSISTANT_MODEL            (default qwen2.5:7b-instruct)
+        //   REVIT_ASSISTANT_ALLOW_REMOTE_LLM (opt-in to a non-loopback endpoint, https only)
+        var allowRemote = IsTruthy(Environment.GetEnvironmentVariable("REVIT_ASSISTANT_ALLOW_REMOTE_LLM"));
+        var endpoint = LlmEndpointPolicy.Evaluate(
+            Environment.GetEnvironmentVariable("REVIT_ASSISTANT_OLLAMA_URL"), allowRemote);
+
+        // Silently falling back would leave the user believing their endpoint was honoured.
+        if (endpoint.Rejected)
+        {
+            TaskDialog.Show("Trợ lý Revit — địa chỉ LLM",
+                endpoint.Reason ?? "Địa chỉ LLM đã cấu hình không được chấp nhận.");
+        }
+
         var model = Environment.GetEnvironmentVariable("REVIT_ASSISTANT_MODEL")
                     ?? "qwen2.5:7b-instruct";
         var numCtx = int.TryParse(
             Environment.GetEnvironmentVariable("REVIT_ASSISTANT_NUM_CTX"), out var n) ? n : 8192;
 
-        var llm = new OllamaClient(baseUrl, model, numCtx);
+        var llm = new OllamaClient(endpoint.Url, model, numCtx);
         var bridge = new RevitBridge();
         var chat = new OrchestratorChatService(llm, bridge, modelSchemaJson: null, contextTokens: numCtx);
 
         var view = new ChatView { DataContext = new ChatViewModel(chat, new FileFeedbackSink()) };
         application.RegisterDockablePane(PaneId, "Trợ lý Revit", new AssistantPaneProvider(view));
     }
+
+    private static bool IsTruthy(string? v) =>
+        v is not null && (v == "1" ||
+                          v.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                          v.Equals("yes", StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Add the "AI Assistant" ribbon tab with a toggle button.</summary>
     private static void CreateRibbon(UIControlledApplication application)

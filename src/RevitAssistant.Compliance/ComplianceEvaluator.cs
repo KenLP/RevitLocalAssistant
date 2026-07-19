@@ -33,9 +33,18 @@ public sealed class ComplianceEvaluator
     // Phase 6: inject IRevitCommandDispatcher (from Core submodule)
     public ComplianceEvaluator() { }
 
-    // Phase 6: full implementation
+    /// <summary>
+    /// NOT IMPLEMENTED YET (Phase 6).
+    ///
+    /// This throws rather than returning an empty list on purpose: an empty result from a
+    /// compliance check reads as "no violations found", which is the most dangerous possible
+    /// answer to give about an unchecked model. Failing loudly keeps a caller from shipping
+    /// a green report that was never actually evaluated.
+    /// </summary>
     public Task<IReadOnlyList<ComplianceFinding>> EvaluateAsync(
         IEnumerable<ComplianceRule> rules,
         CancellationToken ct = default)
-        => Task.FromResult<IReadOnlyList<ComplianceFinding>>([]);
+        => throw new NotImplementedException(
+            "ComplianceEvaluator is not implemented yet (Phase 6). It must not report " +
+            "'no findings' for a model it never evaluated.");
 }
