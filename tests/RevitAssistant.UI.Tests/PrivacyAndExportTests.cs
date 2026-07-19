@@ -39,6 +39,33 @@ public sealed class DiagnosticsRedactorTests
             because: "the wording is what makes the feedback useful");
     }
 
+    /// <summary>
+    /// Regression, found on a live run: ContextSnapshot is JSON nested inside JSON, so
+    /// Vietnamese arrives as doubled unicode escapes ("kh\\u00f4ng"). Those two leading
+    /// backslashes are not a UNC path — swallowing them turned every diagnostic message
+    /// into "kh[path] t[path] t[path]", destroying exactly the content the log is for.
+    /// </summary>
+    [Fact]
+    public void DoubleEscapedUnicode_IsNotMistakenForAUncPath()
+    {
+        const string text = @"Tool 'query' kh\\u00f4ng t\\u1ed3n t\\u1ea1i.";
+
+        var redacted = DiagnosticsRedactor.Redact(text);
+
+        redacted.Should().NotContain("[path]",
+            because: @"\\u00f4 is an escaped character, not a \\server\share path");
+        redacted.Should().Be(text);
+    }
+
+    [Fact]
+    public void RealUncPath_IsStillRemoved_EvenWhenDoubleEscaped()
+    {
+        var redacted = DiagnosticsRedactor.Redact(@"opened \\\\fileserver\\bim\\Tower.rvt");
+
+        redacted.Should().Contain("[path]");
+        redacted.Should().NotContain("fileserver").And.NotContain("Tower.rvt");
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

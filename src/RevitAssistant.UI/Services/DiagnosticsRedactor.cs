@@ -14,8 +14,14 @@ namespace RevitAssistant.UI;
 public static class DiagnosticsRedactor
 {
     // UNC first — "\\server\share\..." would otherwise be left behind by the drive pattern.
+    //
+    // The host segment and the separator after it are BOTH required. Without them this
+    // also matched "\\u00f4", the doubled unicode escape that Vietnamese turns into when
+    // ContextSnapshot (JSON) is embedded in the log entry (JSON again) — which replaced
+    // every accented character with "[path]" and destroyed the message being diagnosed.
+    // Backslashes are allowed to appear once or twice for the same escaping reason.
     private static readonly Regex UncPath =
-        new(@"\\\\[^\s""',;]+", RegexOptions.Compiled);
+        new(@"\\{2,4}[A-Za-z0-9._$-]+\\{1,2}[^\s""',;]*", RegexOptions.Compiled);
 
     // Drive-letter paths, including the doubled backslashes of JSON-escaped text.
     private static readonly Regex DrivePath =
