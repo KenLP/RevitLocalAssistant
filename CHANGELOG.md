@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-07-19 (2) — stop colliding with RevitMCPAddin in the shared Addins folder
+
+The dev deploy copied every DLL flat into `%APPDATA%\Autodesk\Revit\Addins\<year>\`,
+including `RevitMCP.Core.dll`. RevitMCPAddin ships a file of that same name, and the two
+are pinned to **different branches with incompatible APIs** (this repo → the
+`feat/extract-revit-mcp-core` fork; RevitMCPServer → `main`). Whichever add-in built last
+won, and the other failed to load — observed live as *"Revit cannot run the external
+application 'Revit MCP Addin'"*.
+
+- **Dev deploy now writes assemblies to `…\Addins\<year>\RevitAssistant\`**, leaving only
+  the `.addin` manifest in the shared folder. Nothing of ours occupies a shared filename
+  any more.
+- **The source `.addin` now points into the subfolder**, so the dev deploy and the
+  installer use the same manifest and the same layout — the installer no longer rewrites
+  it, removing a place the two could drift apart.
+- ✅ **Verified in Revit 2026**: the add-in loads from the subfolder and answers queries.
+  This closes the installer's biggest open risk — whether Revit resolves an add-in's
+  dependencies from its own subfolder. It does, and the dev deploy now exercises that path
+  on every build.
+
+End users were never affected: the installer already used this layout. The collision was
+dev-machine-only, on boxes with both add-ins installed.
+
 ## 2026-07-19 — fix context overflow that was silently disabling the system prompt
 
 Found by running the add-in in Revit for real. The model had become unusable: it answered

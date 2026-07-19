@@ -60,18 +60,32 @@
     After build: copy all DLLs + manifest to the per-user Revit Addins folder.
     Disable with: dotnet build -p:DeployToRevit=false  (CI always passes this)
   -->
+  <!--
+    Assemblies go in their OWN subfolder, only the manifest sits in the shared Addins
+    directory (and the manifest's <Assembly> points into the subfolder).
+
+    Deploying flat put our RevitMCP.Core.dll next to RevitMCPAddin's copy of the same
+    file — different branches, incompatible APIs — so whichever add-in built last broke
+    the other. This is also the layout the installer produces, so dev and release agree.
+  -->
+  <PropertyGroup>
+    <RevitAddinPayloadFolder>$(RevitAddinFolder)\RevitAssistant</RevitAddinPayloadFolder>
+  </PropertyGroup>
+
   <Target Name="DeployToRevitAddinsFolder" AfterTargets="Build"
           Condition="'$(DeployToRevit)' != 'false'">
-    <MakeDir Directories="$(RevitAddinFolder)" />
+    <MakeDir Directories="$(RevitAddinPayloadFolder)" />
     <ItemGroup>
       <_DeployFiles Include="$(TargetDir)*.dll" />
       <_DeployFiles Include="$(TargetDir)*.pdb" />
-      <_DeployFiles Include="$(MSBuildProjectDirectory)\RevitAssistant.addin" />
     </ItemGroup>
     <Copy SourceFiles="@(_DeployFiles)"
+          DestinationFolder="$(RevitAddinPayloadFolder)"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\RevitAssistant.addin"
           DestinationFolder="$(RevitAddinFolder)"
           SkipUnchangedFiles="true" />
-    <Message Importance="high" Text="[RevitAssistant] Deployed to $(RevitAddinFolder)" />
+    <Message Importance="high" Text="[RevitAssistant] Deployed to $(RevitAddinPayloadFolder)" />
   </Target>
 
 </Project>

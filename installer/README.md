@@ -28,9 +28,11 @@ vào thư mục riêng để không đụng bản ClosedXML/YamlDotNet của add
     RevitAssistant\             toàn bộ DLL sản phẩm + phụ thuộc
 ```
 
-⚠️ Đây là **điểm khác biệt so với dev deploy** và là chỗ dễ hỏng nhất: nếu Revit
-không resolve được assembly trong thư mục con, add-in sẽ không load. Phải kiểm
-thật (mục 3 checklist) trước khi tin.
+✅ **Layout này đã được kiểm chứng thật** (2026-07-19, Revit 2026): dev deploy giờ
+dùng đúng layout trên, add-in load được và trả lời truy vấn bình thường. Đây từng
+là rủi ro lớn nhất của installer — Revit có resolve được assembly trong thư mục con
+không — và câu trả lời là **có**. Dev deploy và installer giờ dùng **cùng một layout
+và cùng một file `.addin`**, nên đường đi này được test mỗi lần build.
 
 ## Checklist nghiệm thu (chưa mục nào được chạy)
 
@@ -38,8 +40,10 @@ thật (mục 3 checklist) trước khi tin.
    không lỗi, sinh ra `.exe` + `.sha256`.
 2. **Cài trên máy sạch** — máy chưa từng có RevitAssistant. Wizard chỉ hiện các
    phiên bản Revit thực sự đang cài.
-3. **Add-in load được** — mở Revit, tab "AI Assistant" xuất hiện, panel mở được.
-   Đây là bước xác minh layout thư mục con ở trên.
+3. ~~**Add-in load được** — mở Revit, tab "AI Assistant" xuất hiện, panel mở được.~~
+   ✅ **Đã xác minh 2026-07-19** qua dev deploy dùng cùng layout: add-in load từ
+   thư mục con và trả lời truy vấn bình thường. Vẫn nên xác nhận lại sau khi cài
+   bằng installer thật (đường copy khác, layout thì giống).
 4. **Chặn khi Revit đang chạy** — mở Revit rồi chạy installer: phải báo lỗi và
    dừng, không cài đè.
 5. **Nâng cấp** — cài 0.1.0 rồi cài 0.1.1 đè lên: không nhân bản entry trong

@@ -2,7 +2,14 @@
 <RevitAddIns>
   <AddIn Type="Application">
     <Name>Revit Local Assistant</Name>
-    <Assembly>RevitAssistant.dll</Assembly>
+    <!--
+      Path is relative to the .addin file. The add-in and ALL its dependencies live in
+      their own subfolder so nothing lands in the shared Addins directory: this add-in
+      and RevitMCPAddin both carry a file called RevitMCP.Core.dll, pinned to different
+      branches with incompatible APIs. Deploying flat meant whichever built last won and
+      the other add-in failed to load.
+    -->
+    <Assembly>RevitAssistant\RevitAssistant.dll</Assembly>
     <FullClassName>RevitAssistant.App</FullClassName>
     <!--
       ClientId MUST differ from RevitMCPAddin (9C4D2B7E-...).

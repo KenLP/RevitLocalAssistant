@@ -55,12 +55,9 @@ foreach ($year in $RevitYears) {
     # Ship runtime assemblies only — .pdb are debug symbols, not user payload.
     Copy-Item (Join-Path $binDir "*.dll") -Destination $yearDir -Force
 
-    # Manifest lives beside the folder and points into it.
-    $manifest = Get-Content $manifestSrc -Raw
-    $manifest = $manifest -replace `
-        '<Assembly>RevitAssistant\.dll</Assembly>', `
-        '<Assembly>RevitAssistant\RevitAssistant.dll</Assembly>'
-    Set-Content -Path (Join-Path $payload "$year.addin") -Value $manifest -Encoding UTF8
+    # The source manifest already points into the subfolder (same layout the dev deploy
+    # target uses), so it ships as-is — no rewrite to drift out of sync.
+    Copy-Item $manifestSrc -Destination (Join-Path $payload "$year.addin") -Force
 
     $count = (Get-ChildItem $yearDir -Filter *.dll).Count
     Write-Host "   staged $count assemblies -> $yearDir"
