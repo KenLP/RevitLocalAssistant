@@ -12,10 +12,17 @@ public sealed record FeedbackEntry(
 public interface IFeedbackSink
 {
     void Record(FeedbackEntry entry);
+
+    /// <summary>
+    /// Discard everything recorded so far. The log holds the user's own conversations,
+    /// so getting rid of it must not require finding a file under %APPDATA% by hand.
+    /// </summary>
+    void Clear();
 }
 
 /// <summary>No-op sink (design-time / tests).</summary>
 public sealed class NullFeedbackSink : IFeedbackSink
 {
     public void Record(FeedbackEntry entry) { }
+    public void Clear() { }
 }

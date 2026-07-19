@@ -450,10 +450,11 @@ public sealed class OrchestratorChatService : IChatService
     /// update_where. Groups elements by their before-value so a single
     /// set_parameter_batch call handles each unique value (often just one group).
     ///
-    /// Every group dry-runs first and only commits if ALL groups pass, so a restore
-    /// that would half-apply is refused instead. The undo state is kept unless the
-    /// restore fully succeeds — losing it on a failed attempt would strand the user
-    /// with a half-changed model and no way back.
+    /// All groups run as ONE batch in a single Revit transaction with stopOnError, so a
+    /// restore either lands completely or not at all — a partially restored model is the
+    /// one outcome an undo must never produce. The undo state is kept unless the restore
+    /// fully succeeds; dropping it on a failed attempt would strand the user with a
+    /// changed model and no way back.
     /// </summary>
     public async Task<ChatTurn> UndoAsync(CancellationToken ct = default)
     {
@@ -462,55 +463,58 @@ public sealed class OrchestratorChatService : IChatService
 
         var undo = _lastUndo;
 
-        // Group by before-value: one set_parameter_batch call per unique value.
-        var groups = undo.Changes
+        // Group by before-value: one set_parameter_batch step per unique value.
+        var steps = undo.Changes
             .GroupBy(c => c.Before ?? "")
-            .Select(g => new JsonObject
+            .Select(g => ("set_parameter_batch", new JsonObject
             {
                 ["ids"] = new JsonArray(g.Select(c => (JsonNode)JsonValue.Create(c.Id)).ToArray()),
                 ["parameterName"] = undo.SetParameter,
                 ["value"] = g.Key,
-                ["atomic"] = true,   // a group either restores fully or not at all
-            })
+                ["atomic"] = true,
+            }))
             .ToList();
 
-        // Pass 1 — prove every group would succeed before changing anything.
-        foreach (var args in groups)
+        // Rehearse first: proves the restore would succeed without touching the model.
+        var probe = await _revit.CallBatchAsync(steps, stopOnError: true, dryRun: true, ct)
+                                .ConfigureAwait(false);
+        if (!IsOk(probe) || BatchHadFailure(probe))
         {
-            var probe = await _revit.CallAsync("set_parameter_batch", args, true, ct).ConfigureAwait(false);
-            if (!IsOk(probe) || FailedCount(probe) > 0)
-            {
-                return new ChatTurn(new[] { new ChatReply(
-                    "❌ Không hoàn tác được: thử khôi phục không thành công nên model giữ nguyên. " +
-                    (IsOk(probe) ? "" : ErrorOf(probe)), IsError: true) });
-            }
+            return new ChatTurn(new[] { new ChatReply(
+                "❌ Không hoàn tác được: thử khôi phục không thành công nên model giữ nguyên. " +
+                (IsOk(probe) ? "" : ErrorOf(probe)), IsError: true) });
         }
 
-        // Pass 2 — commit. Each group is atomic; a mid-sequence failure leaves the
-        // earlier groups restored, so we keep the undo state and say so plainly.
-        var restored = 0;
-        foreach (var args in groups)
+        var res = await _revit.CallBatchAsync(steps, stopOnError: true, dryRun: false, ct)
+                              .ConfigureAwait(false);
+        if (!IsOk(res) || BatchHadFailure(res))
         {
-            var res = await _revit.CallAsync("set_parameter_batch", args, false, ct).ConfigureAwait(false);
-            if (!IsOk(res) || FailedCount(res) > 0)
-            {
-                return new ChatTurn(new[] { new ChatReply(
-                    $"⚠️ Hoàn tác dở dang: {restored}/{undo.Changes.Count} phần tử đã khôi phục rồi thì gặp lỗi. " +
-                    $"Vẫn có thể bấm Hoàn tác lại. {(IsOk(res) ? "" : ErrorOf(res))}", IsError: true) });
-            }
-            restored += CountIds(args);
+            // stopOnError rolled the whole transaction back, so the model is untouched.
+            return new ChatTurn(new[] { new ChatReply(
+                "❌ Hoàn tác thất bại — model được giữ nguyên, không có thay đổi nào bị áp dụng " +
+                $"một phần. Vẫn có thể thử lại. {(IsOk(res) ? "" : ErrorOf(res))}", IsError: true) });
         }
 
         _lastUndo = null;   // cleared only after a fully successful restore
         return new ChatTurn(new[] { new ChatReply(
-            $"✅ Đã hoàn tác '{undo.SetParameter}' trên {restored} phần tử.") });
+            $"✅ Đã hoàn tác '{undo.SetParameter}' trên {undo.Changes.Count} phần tử.") });
+    }
+
+    /// <summary>True when any step in a batch envelope reported a failure.</summary>
+    private static bool BatchHadFailure(JsonObject envelope)
+    {
+        if ((envelope["data"] as JsonObject)?["results"] is not JsonArray results) return false;
+        foreach (var r in results)
+        {
+            if (r is not JsonObject o) continue;
+            if (o["ok"] is JsonValue ok && ok.TryGetValue<bool>(out var b) && !b) return true;
+            if (FailedCount(o) > 0) return true;
+        }
+        return false;
     }
 
     private static int FailedCount(JsonObject envelope) =>
         (envelope["data"] as JsonObject)?["failed"] is JsonValue v && v.TryGetValue<int>(out var n) ? n : 0;
-
-    private static int CountIds(JsonObject batchArgs) =>
-        (batchArgs["ids"] as JsonArray)?.Count ?? 0;
 
     /// <summary>
     /// Builds an undo payload from an update_where result envelope, or null when the

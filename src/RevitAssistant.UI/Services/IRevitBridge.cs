@@ -21,4 +21,19 @@ public interface IRevitBridge
         JsonObject parameters,
         bool dryRun = false,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Run several commands inside a SINGLE Revit transaction. With
+    /// <paramref name="stopOnError"/> the whole transaction rolls back the moment any
+    /// step fails, so the batch either lands completely or not at all — which is the
+    /// only way to restore a multi-value undo without risking a half-applied model.
+    ///
+    /// Steps are <c>{ command, parameters }</c> objects. Returns the dispatcher
+    /// envelope: { ok, data:{ count, results[] }, error?, committed? }.
+    /// </summary>
+    Task<JsonObject> CallBatchAsync(
+        IReadOnlyList<(string Command, JsonObject Parameters)> steps,
+        bool stopOnError = true,
+        bool dryRun = false,
+        CancellationToken ct = default);
 }

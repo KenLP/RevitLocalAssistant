@@ -30,6 +30,9 @@ public sealed class OrchestratorChatServiceTests
     {
         private readonly Func<string, JsonObject, bool, JsonObject> _handler;
         public List<(string Cmd, JsonObject Args, bool DryRun)> Calls { get; } = new();
+        /// <summary>Batches recorded separately so tests can assert single-transaction use.</summary>
+        public List<(IReadOnlyList<(string Command, JsonObject Parameters)> Steps, bool StopOnError, bool DryRun)>
+            Batches { get; } = new();
         public FakeBridge(Func<string, JsonObject, bool, JsonObject> handler) => _handler = handler;
 
         public Task<JsonObject> CallAsync(string command, JsonObject parameters,
@@ -37,6 +40,25 @@ public sealed class OrchestratorChatServiceTests
         {
             Calls.Add((command, parameters, dryRun));
             return Task.FromResult(_handler(command, parameters, dryRun));
+        }
+
+        public Task<JsonObject> CallBatchAsync(
+            IReadOnlyList<(string Command, JsonObject Parameters)> steps,
+            bool stopOnError = true, bool dryRun = false, CancellationToken ct = default)
+        {
+            Batches.Add((steps, stopOnError, dryRun));
+            // Run each step through the same handler and shape it like the dispatcher does.
+            var results = new JsonArray();
+            foreach (var (cmd, args) in steps)
+            {
+                Calls.Add((cmd, args, dryRun));
+                results.Add(_handler(cmd, args, dryRun));
+            }
+            return Task.FromResult(Ok(new JsonObject
+            {
+                ["count"] = steps.Count,
+                ["results"] = results,
+            }));
         }
     }
 
@@ -521,20 +543,22 @@ public sealed class OrchestratorChatServiceTests
     }
 
     [Fact]
-    public async Task Undo_RestoresAtomically_AndOnlyAfterProvingItWouldSucceed()
+    public async Task Undo_RestoresInOneTransaction_AndOnlyAfterProvingItWouldSucceed()
     {
         var (svc, bridge, _) = await CommitAWriteAsync(WriteBridge());
-        bridge.Calls.Clear();
+        bridge.Batches.Clear();
 
         var turn = await svc.UndoAsync();
 
         turn.Replies.Should().Contain(r => r.Text.Contains("✅"));
-        var restores = bridge.Calls.Where(c => c.Cmd == "set_parameter_batch").ToList();
-        restores.Should().Contain(c => c.DryRun, "the restore is proven before it is applied");
-        restores.Should().Contain(c => !c.DryRun);
-        restores.Where(c => !c.DryRun).Should()
-            .OnlyContain(c => c.Args["atomic"]!.GetValue<bool>(),
-                because: "a restore must not half-apply");
+
+        // A single batch per pass — all groups share one Revit transaction, so the
+        // restore cannot land halfway.
+        bridge.Batches.Should().HaveCount(2, "one rehearsal, one commit");
+        bridge.Batches[0].DryRun.Should().BeTrue("the restore is proven before it is applied");
+        bridge.Batches[1].DryRun.Should().BeFalse();
+        bridge.Batches.Should().OnlyContain(b => b.StopOnError,
+            because: "any failing step must roll the whole restore back");
     }
 
     [Fact]
@@ -547,12 +571,12 @@ public sealed class OrchestratorChatServiceTests
                 : null);
 
         var (svc, b, _) = await CommitAWriteAsync(bridge);
-        b.Calls.Clear();
+        b.Batches.Clear();
 
         var first = await svc.UndoAsync();
 
         first.Replies.Should().Contain(r => r.IsError);
-        b.Calls.Should().NotContain(c => c.Cmd == "set_parameter_batch" && !c.DryRun,
+        b.Batches.Should().NotContain(x => !x.DryRun,
             because: "the rehearsal failed, so the model must be left alone");
 
         // The state survives so the user can retry rather than being stranded.

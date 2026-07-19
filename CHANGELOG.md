@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-07-18 (2) — atomic undo, diagnostics control, installer scaffolding
+
+- **Undo is now genuinely atomic.** It previously issued one `set_parameter_batch` per
+  distinct before-value; each call was atomic on its own, so a failure part-way through
+  left the earlier groups restored. `IRevitBridge` gained `CallBatchAsync`, which maps to
+  Core's batch dispatcher — that runs every step inside a **single Revit transaction** and
+  rolls the whole thing back on the first failure. A restore now lands completely or not
+  at all. The batch path enforces the same `ToolPolicy` allowlist per step, so batching
+  cannot be used to smuggle a command past the gate.
+- **Users can delete their diagnostics from the UI.** `IFeedbackSink.Clear()` is wired to a
+  🛡 button in the chat header; previously the only way to remove the log was to find
+  `feedback.jsonl` under `%APPDATA%` by hand.
+- **Installer scaffolding** — `installer/inno/RevitAssistant.iss` and
+  `installer/build-installer.ps1`. Installs into a per-add-in subfolder
+  (`…\Addins\<year>\RevitAssistant\`) with the manifest pointing into it, so dependencies
+  cannot collide with another add-in's copies; refuses to run while Revit is open; emits a
+  SHA-256 next to the setup.
+  **Neither has been compiled or installed** — Inno Setup was not available. The staging
+  half of the build script was exercised (17 assemblies, manifest rewrite, no PDBs) and
+  correctly exits 2 when the compiler is missing, but the `.iss` itself is unverified. See
+  [installer/README.md](installer/README.md) for the acceptance checklist; `docs/INSTALL.md`
+  no longer implies a released installer exists.
+
+Suite: 266 passing.
+
 ## 2026-07-18 — undo/import correctness, offline + privacy enforcement
 
 ### P1

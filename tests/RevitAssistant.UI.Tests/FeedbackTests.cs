@@ -24,7 +24,9 @@ public sealed class FeedbackTests
     private sealed class RecordingSink : IFeedbackSink
     {
         public List<FeedbackEntry> Entries { get; } = new();
+        public int ClearCount { get; private set; }
         public void Record(FeedbackEntry e) => Entries.Add(e);
+        public void Clear() { ClearCount++; Entries.Clear(); }
     }
 
     private static async Task<(ChatViewModel vm, RecordingSink sink, ChatMessageVm reply)> Setup()
@@ -87,6 +89,18 @@ public sealed class FeedbackTests
         sink.Entries[1].Reason.Should().Be("đếm sai số phòng");
         vm.Messages.Should().Contain(m => m.Kind == ChatMessageKind.System && m.Text.Contains("Cảm ơn"));
     }
+
+    [Fact]
+    public async Task ClearDiagnosticsCommand_ClearsTheSink_AndTellsTheUser()
+    {
+        var (vm, sink, _) = await Setup();
+        sink.Record(new FeedbackEntry(System.DateTime.Now, false, "m", null, "c"));
+
+        vm.ClearDiagnosticsCommand.Execute(null);
+
+        sink.ClearCount.Should().Be(1);
+        vm.Messages.Should().Contain(m => m.Text.Contains("Đã xoá nhật ký chẩn đoán"));
+    }
 }
 
 public sealed class FileFeedbackSinkTests
@@ -116,4 +130,35 @@ public sealed class FileFeedbackSinkTests
         var act = () => sink.Record(new FeedbackEntry(System.DateTime.Now, false, "m", null, "c"));
         act.Should().NotThrow();
     }
+
+    [Fact]
+    public void Clear_DeletesTheLog_SoTheUserCanRemoveTheirOwnData()
+    {
+        var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+            $"ra-feedback-{System.Guid.NewGuid():N}.jsonl");
+        try
+        {
+            var sink = new FileFeedbackSink(path);
+            sink.Record(new FeedbackEntry(System.DateTime.Now, false, "msg", "reason", "ctx"));
+            System.IO.File.Exists(path).Should().BeTrue();
+
+            sink.Clear();
+
+            System.IO.File.Exists(path).Should().BeFalse();
+        }
+        finally
+        {
+            if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Clear_MissingFile_DoesNotThrow()
+    {
+        var sink = new FileFeedbackSink(System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(), $"ra-absent-{System.Guid.NewGuid():N}.jsonl"));
+        var act = () => sink.Clear();
+        act.Should().NotThrow();
+    }
+
 }

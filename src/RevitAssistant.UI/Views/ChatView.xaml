@@ -143,6 +143,9 @@
                                Visibility="{Binding ContextWarning, Converter={StaticResource BoolToVis}}" />
                     <Button Content="🗑 Xóa" Command="{Binding ResetCommand}" Padding="8,3" FontSize="11"
                             ToolTip="Xóa hội thoại, bắt đầu phiên mới" />
+                    <Button Content="🛡" Command="{Binding ClearDiagnosticsCommand}"
+                            Padding="6,3" FontSize="11" Margin="4,0,0,0"
+                            ToolTip="Xoá nhật ký chẩn đoán (phản hồi 👎) đã lưu trên máy" />
                 </StackPanel>
             </Grid>
         </Border>
