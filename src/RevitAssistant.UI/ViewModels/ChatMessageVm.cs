@@ -104,10 +104,27 @@ public sealed partial class ChatMessageVm : ObservableObject
         catch { /* silent — user can see the file was not created */ }
     }
 
-    private static string CsvCell(string s) =>
-        s.Contains(',') || s.Contains('"') || s.Contains('\n')
-            ? '"' + s.Replace("\"", "\"\"") + '"'
+    /// <summary>
+    /// Quotes a CSV cell and defuses spreadsheet formula injection.
+    ///
+    /// Values here come from the Revit model — a parameter such as Comments can legitimately
+    /// contain any text a user typed. Excel and Sheets treat a leading =, +, - or @ as a
+    /// formula, so exporting a cell like <c>=HYPERLINK(...)</c> or <c>=cmd|...</c> turns the
+    /// export into something that executes when opened. Prefixing a tab keeps the value
+    /// visible and text-only without changing what it reads as.
+    /// </summary>
+    internal static string CsvCell(string s)
+    {
+        var value = s.Length > 0 && (s[0] is '=' or '+' or '-' or '@'
+                                     || s[0] == '\t' || s[0] == '\r')
+            ? "\t" + s
             : s;
+
+        return value.Contains(',') || value.Contains('"') || value.Contains('\n')
+                 || value.Contains('\r') || value.Contains('\t')
+            ? '"' + value.Replace("\"", "\"\"") + '"'
+            : value;
+    }
 
     public static ChatMessageVm FromUser(string text) =>
         new() { Kind = ChatMessageKind.User, Sender = "Bạn", Text = text };

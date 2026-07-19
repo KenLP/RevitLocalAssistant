@@ -35,19 +35,51 @@ internal sealed class RevitBridge : IRevitBridge
         }
 
         var dispatcher = App.Dispatcher;
-        if (dispatcher is null)
-        {
-            return Task.FromResult(new JsonObject
-            {
-                ["ok"] = false,
-                ["error"] = new JsonObject
-                {
-                    ["code"] = "not_ready",
-                    ["message"] = "Bộ điều phối Revit chưa sẵn sàng.",
-                },
-            });
-        }
+        if (dispatcher is null) return Task.FromResult(NotReady());
 
         return dispatcher.EnqueueAsync(command, parameters, dryRun);
     }
+
+    public Task<JsonObject> CallBatchAsync(
+        IReadOnlyList<(string Command, JsonObject Parameters)> steps,
+        bool stopOnError = true,
+        bool dryRun = false,
+        CancellationToken ct = default)
+    {
+        // The allowlist applies per step — batching must not become a way around it.
+        foreach (var (command, _) in steps)
+        {
+            if (!ToolPolicy.IsDispatchable(command))
+            {
+                return Task.FromResult(new JsonObject
+                {
+                    ["ok"] = false,
+                    ["error"] = new JsonObject
+                    {
+                        ["code"] = "tool_not_allowed",
+                        ["message"] = $"Lệnh '{command}' không nằm trong danh sách được phép.",
+                    },
+                });
+            }
+        }
+
+        var dispatcher = App.Dispatcher;
+        if (dispatcher is null) return Task.FromResult(NotReady());
+
+        var batchSteps = steps
+            .Select(s => new RevitMCPAddin.BatchStep(s.Command, s.Parameters))
+            .ToList();
+
+        return dispatcher.EnqueueBatchAsync(batchSteps, stopOnError, dryRun);
+    }
+
+    private static JsonObject NotReady() => new()
+    {
+        ["ok"] = false,
+        ["error"] = new JsonObject
+        {
+            ["code"] = "not_ready",
+            ["message"] = "Bộ điều phối Revit chưa sẵn sàng.",
+        },
+    };
 }

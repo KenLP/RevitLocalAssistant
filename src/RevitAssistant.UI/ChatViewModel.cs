@@ -202,6 +202,19 @@ public sealed partial class ChatViewModel : ObservableObject
         HasUndo = false;
     }
 
+    /// <summary>
+    /// Deletes the local diagnostics log. Thumbs-down feedback stores the assistant's
+    /// reply and a conversation snapshot on disk; the user owns that data and must be
+    /// able to remove it from inside the add-in.
+    /// </summary>
+    [RelayCommand]
+    private void ClearDiagnostics()
+    {
+        _feedback.Clear();
+        Messages.Add(ChatMessageVm.FromSystem(
+            "Đã xoá nhật ký chẩn đoán (phản hồi 👎) khỏi máy."));
+    }
+
     // ── Shared ───────────────────────────────────────────────────────────────
 
     private void ApplyTurn(ChatTurn turn)

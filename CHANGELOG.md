@@ -1,5 +1,75 @@
 # Changelog
 
+## 2026-07-18 (2) — atomic undo, diagnostics control, installer scaffolding
+
+- **Undo is now genuinely atomic.** It previously issued one `set_parameter_batch` per
+  distinct before-value; each call was atomic on its own, so a failure part-way through
+  left the earlier groups restored. `IRevitBridge` gained `CallBatchAsync`, which maps to
+  Core's batch dispatcher — that runs every step inside a **single Revit transaction** and
+  rolls the whole thing back on the first failure. A restore now lands completely or not
+  at all. The batch path enforces the same `ToolPolicy` allowlist per step, so batching
+  cannot be used to smuggle a command past the gate.
+- **Users can delete their diagnostics from the UI.** `IFeedbackSink.Clear()` is wired to a
+  🛡 button in the chat header; previously the only way to remove the log was to find
+  `feedback.jsonl` under `%APPDATA%` by hand.
+- **Installer scaffolding** — `installer/inno/RevitAssistant.iss` and
+  `installer/build-installer.ps1`. Installs into a per-add-in subfolder
+  (`…\Addins\<year>\RevitAssistant\`) with the manifest pointing into it, so dependencies
+  cannot collide with another add-in's copies; refuses to run while Revit is open; emits a
+  SHA-256 next to the setup.
+  **Neither has been compiled or installed** — Inno Setup was not available. The staging
+  half of the build script was exercised (17 assemblies, manifest rewrite, no PDBs) and
+  correctly exits 2 when the compiler is missing, but the `.iss` itself is unverified. See
+  [installer/README.md](installer/README.md) for the acceptance checklist; `docs/INSTALL.md`
+  no longer implies a released installer exists.
+
+Suite: 266 passing.
+
+## 2026-07-18 — undo/import correctness, offline + privacy enforcement
+
+### P1
+
+- **Undo is now refused where it cannot restore faithfully.** `update_where` records
+  before-values as display strings (`Parameter.AsValueString`), which only round-trips for
+  String storage — a Double comes back unit-formatted ("2100 mm") and an ElementId comes back
+  as the target's *name*, so feeding either back wrote the wrong value or failed. A type-scope
+  edit was worse: the restore addressed instance ids for a parameter living on the type. Undo
+  is now offered only for instance-scope String parameters; the storage type is probed via
+  `get_parameter` at capture time.
+- **Undo no longer half-applies or loses its state.** Restores run `atomic: true`, every group
+  is rehearsed with a dry-run and nothing is written unless all groups pass, and the undo state
+  is cleared only after a fully successful restore — previously it was dropped *before* the
+  restore ran, so a failure left the user with a changed model and no way back.
+- **Import now validates for real.** The dry-run calls `import_parameters` with `dryRun: true`
+  (Core runs ModelWrite in a transaction and rolls back), so parameter existence, read-only
+  status, storage type and whether the value actually took are all proven before the user
+  confirms. Previously the "dry-run" only built a lookup, and the commit was the first genuine
+  write attempt. Commit reuses the same item builder, so what was validated is what is written.
+- **Ambiguous and truncated imports are blocked** instead of silently guessing: duplicate match
+  keys used to first-win (writing a row's data to an arbitrary one of the matching elements),
+  and a category at/over the 5000-element fetch limit produced an incomplete lookup that
+  quietly turned matched rows into "not found".
+- **Stubs fail loudly.** `ComplianceEvaluator.EvaluateAsync` returned an empty list — which
+  reads as "no violations" for a model it never evaluated — and `ModelSchemaExporter.Export`
+  returned `{}`, silently stripping the prompt of real category/parameter names. Both now throw
+  `NotImplementedException`. Neither had production callers.
+
+### P2
+
+- **Loopback is enforced by default.** The Ollama endpoint came from an environment variable
+  with no validation, so a stray value could ship prompts — which quote real project and
+  parameter data — off-box, in cleartext. Remote endpoints now require
+  `REVIT_ASSISTANT_ALLOW_REMOTE_LLM=1` *and* https; anything rejected falls back to loopback
+  and tells the user why rather than silently ignoring their setting.
+- **Diagnostics are redacted.** Feedback entries wrote the assistant's reply and a conversation
+  snapshot verbatim, routinely including full model paths and the Windows account name. Paths
+  (drive, UNC and JSON-escaped) and the user name are now scrubbed before the log touches disk,
+  and `FileFeedbackSink.Clear()` lets the user delete the log.
+- **CSV export defuses formula injection.** Cells starting `=`, `+`, `-` or `@` are exported as
+  text, so a Comments value like `=HYPERLINK(...)` no longer becomes a live formula on open.
+
+Suite: 263 passing. Each new guard was verified to fail when its check is removed.
+
 ## 2026-07-17 (2) — write-path safety
 
 - **Deny-by-default tool policy (P0-C).** New `ToolPolicy` is the single source of truth for

@@ -359,7 +359,7 @@ public sealed class OrchestratorChatService : IChatService
         var canUndo = false;
         if (write.FunctionName == "update_where" && IsOk(result))
         {
-            _lastUndo = BuildUndoPayload(result);
+            _lastUndo = await BuildUndoPayloadAsync(result, ct).ConfigureAwait(false);
             canUndo = _lastUndo is not null;
         }
         else
@@ -449,6 +449,12 @@ public sealed class OrchestratorChatService : IChatService
     /// Restores the parameter values that were overwritten by the last confirmed
     /// update_where. Groups elements by their before-value so a single
     /// set_parameter_batch call handles each unique value (often just one group).
+    ///
+    /// All groups run as ONE batch in a single Revit transaction with stopOnError, so a
+    /// restore either lands completely or not at all — a partially restored model is the
+    /// one outcome an undo must never produce. The undo state is kept unless the restore
+    /// fully succeeds; dropping it on a failed attempt would strand the user with a
+    /// changed model and no way back.
     /// </summary>
     public async Task<ChatTurn> UndoAsync(CancellationToken ct = default)
     {
@@ -456,53 +462,79 @@ public sealed class OrchestratorChatService : IChatService
             return new ChatTurn(new[] { new ChatReply("Không có thao tác nào để hoàn tác.") });
 
         var undo = _lastUndo;
-        _lastUndo = null;
 
-        // Group by before-value: one set_parameter_batch call per unique value.
-        var groups = undo.Changes
+        // Group by before-value: one set_parameter_batch step per unique value.
+        var steps = undo.Changes
             .GroupBy(c => c.Before ?? "")
+            .Select(g => ("set_parameter_batch", new JsonObject
+            {
+                ["ids"] = new JsonArray(g.Select(c => (JsonNode)JsonValue.Create(c.Id)).ToArray()),
+                ["parameterName"] = undo.SetParameter,
+                ["value"] = g.Key,
+                ["atomic"] = true,
+            }))
             .ToList();
 
-        var totalRestored = 0;
-        var errorMessages = new List<string>();
-
-        foreach (var group in groups)
+        // Rehearse first: proves the restore would succeed without touching the model.
+        var probe = await _revit.CallBatchAsync(steps, stopOnError: true, dryRun: true, ct)
+                                .ConfigureAwait(false);
+        if (!IsOk(probe) || BatchHadFailure(probe))
         {
-            var ids = new JsonArray();
-            foreach (var (id, _) in group) ids.Add(id);
-
-            var batchArgs = new JsonObject
-            {
-                ["ids"] = ids,
-                ["parameterName"] = undo.SetParameter,
-                ["value"] = group.Key,
-                ["atomic"] = false,
-            };
-
-            var res = await _revit.CallAsync("set_parameter_batch", batchArgs, false, ct).ConfigureAwait(false);
-            if (IsOk(res))
-                totalRestored += group.Count();
-            else
-                errorMessages.Add(ErrorOf(res));
+            return new ChatTurn(new[] { new ChatReply(
+                "❌ Không hoàn tác được: thử khôi phục không thành công nên model giữ nguyên. " +
+                (IsOk(probe) ? "" : ErrorOf(probe)), IsError: true) });
         }
 
-        if (errorMessages.Count == 0)
+        var res = await _revit.CallBatchAsync(steps, stopOnError: true, dryRun: false, ct)
+                              .ConfigureAwait(false);
+        if (!IsOk(res) || BatchHadFailure(res))
+        {
+            // stopOnError rolled the whole transaction back, so the model is untouched.
             return new ChatTurn(new[] { new ChatReply(
-                $"✅ Đã hoàn tác '{undo.SetParameter}' trên {totalRestored} phần tử.") });
+                "❌ Hoàn tác thất bại — model được giữ nguyên, không có thay đổi nào bị áp dụng " +
+                $"một phần. Vẫn có thể thử lại. {(IsOk(res) ? "" : ErrorOf(res))}", IsError: true) });
+        }
 
-        var failCount = undo.Changes.Count - totalRestored;
-        var msg = totalRestored > 0
-            ? $"⚠️ Hoàn tác một phần: {totalRestored} OK, {failCount} lỗi: {string.Join("; ", errorMessages)}"
-            : $"❌ Hoàn tác thất bại: {string.Join("; ", errorMessages)}";
-        return new ChatTurn(new[] { new ChatReply(msg, IsError: totalRestored == 0) });
+        _lastUndo = null;   // cleared only after a fully successful restore
+        return new ChatTurn(new[] { new ChatReply(
+            $"✅ Đã hoàn tác '{undo.SetParameter}' trên {undo.Changes.Count} phần tử.") });
     }
 
-    /// <summary>Builds an undo payload from an update_where result envelope.</summary>
-    private static UndoPayload? BuildUndoPayload(JsonObject result)
+    /// <summary>True when any step in a batch envelope reported a failure.</summary>
+    private static bool BatchHadFailure(JsonObject envelope)
+    {
+        if ((envelope["data"] as JsonObject)?["results"] is not JsonArray results) return false;
+        foreach (var r in results)
+        {
+            if (r is not JsonObject o) continue;
+            if (o["ok"] is JsonValue ok && ok.TryGetValue<bool>(out var b) && !b) return true;
+            if (FailedCount(o) > 0) return true;
+        }
+        return false;
+    }
+
+    private static int FailedCount(JsonObject envelope) =>
+        (envelope["data"] as JsonObject)?["failed"] is JsonValue v && v.TryGetValue<int>(out var n) ? n : 0;
+
+    /// <summary>
+    /// Builds an undo payload from an update_where result envelope, or null when the
+    /// change cannot be restored faithfully — in which case no Undo is offered at all.
+    ///
+    /// update_where records before-values as DISPLAY strings (Parameter.AsValueString),
+    /// which only round-trips for String storage. A Double comes back unit-formatted
+    /// ("2100 mm"), an ElementId comes back as the target's name — feeding either back
+    /// in would fail or write the wrong value. A type-scope edit is worse: the restore
+    /// would address instance ids for a parameter that lives on the type.
+    /// </summary>
+    private async Task<UndoPayload?> BuildUndoPayloadAsync(JsonObject result, CancellationToken ct)
     {
         var data = result["data"] as JsonObject;
         var paramName = data?["setParameter"]?.GetValue<string>();
         if (string.IsNullOrEmpty(paramName)) return null;
+
+        // Type-scope edits write through the element type — instance ids cannot restore them.
+        if (string.Equals(data?["scope"]?.GetValue<string>(), "type", StringComparison.OrdinalIgnoreCase))
+            return null;
 
         var results = data?["results"] as JsonArray;
         if (results is null) return null;
@@ -518,7 +550,22 @@ public sealed class OrchestratorChatService : IChatService
             changes.Add((id.Value, before));
         }
 
-        return changes.Count > 0 ? new UndoPayload(paramName!, changes) : null;
+        if (changes.Count == 0) return null;
+
+        // Only String storage survives the display-string round-trip.
+        var probe = await _revit.CallAsync("get_parameter", new JsonObject
+        {
+            ["id"] = changes[0].Item1,
+            ["parameterName"] = paramName!,
+        }, false, ct).ConfigureAwait(false);
+
+        var storage = IsOk(probe)
+            ? (probe["data"] as JsonObject)?["storageType"]?.GetValue<string>()
+            : null;
+        if (!string.Equals(storage, "String", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        return new UndoPayload(paramName!, changes);
     }
 
     // ── Import handling ───────────────────────────────────────────────────────

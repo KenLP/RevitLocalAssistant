@@ -33,6 +33,14 @@ public sealed class ModelSchemaExporter
         _doc = doc;
     }
 
-    // Phase 5: returns a compact schema JSON string (<4 KB) for LLM context
-    public string Export() => "{}";
+    /// <summary>
+    /// NOT IMPLEMENTED YET (Phase 5) — returns a compact schema JSON string (&lt;4 KB) for
+    /// LLM context. Throws instead of returning "{}": an empty schema silently strips the
+    /// prompt of the project's real categories and parameter names, so the model falls back
+    /// to guessing them and the degradation is invisible. The orchestrator currently builds
+    /// its own schema sample instead; this exporter has no callers yet.
+    /// </summary>
+    public string Export() => throw new NotImplementedException(
+        "ModelSchemaExporter is not implemented yet (Phase 5). Returning an empty schema " +
+        "would silently degrade prompt grounding.");
 }

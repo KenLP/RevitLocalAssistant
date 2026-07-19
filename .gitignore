@@ -50,3 +50,6 @@ installer/Output/
 installer/inno/*.iss.bak
 revit_export*.csv
 *.csv
+
+# Installer build output (staged payload + setup exe)
+artifacts/

@@ -30,10 +30,11 @@ public static class ImportExecutor
         fields.Add(spec.Match.Param);
         foreach (var s in spec.Sets) if (!FieldInArray(fields, s.Param)) fields.Add(s.Param);
 
+        const int FetchLimit = 5000;
         var findArgs = new JsonObject
         {
             ["category"] = spec.Category,
-            ["limit"] = 5000,
+            ["limit"] = FetchLimit,
             ["fields"] = fields,
         };
 
@@ -41,8 +42,19 @@ public static class ImportExecutor
         if (!IsOk(env))
             return new ImportDryRunResult(ErrorOf(env), spec);
 
+        // A truncated fetch yields an incomplete lookup: rows would silently land in
+        // "not found" and be skipped, so the user would see a confident partial import.
+        var fetched = (env["data"] as JsonObject)?["elements"] as JsonArray;
+        if (fetched is not null && fetched.Count >= FetchLimit)
+        {
+            return new ImportDryRunResult(
+                $"Category '{spec.Category}' có từ {FetchLimit} phần tử trở lên nên danh sách đối chiếu " +
+                "bị cắt — nhập lúc này có thể bỏ sót hoặc ghi nhầm. Hãy thu hẹp phạm vi trước.", spec);
+        }
+
         // Build lookup: display-value of match param → elementId (case-insensitive)
         var lookup = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        var duplicateKeys = new List<string>();
         // "ElementId" / "Id" / "Element Id" → match against el["id"] directly (not a field)
         var matchByElementId =
             spec.Match.Param.Equals("ElementId", StringComparison.OrdinalIgnoreCase) ||
@@ -68,9 +80,21 @@ public static class ImportExecutor
                     matchVal = fieldsObj?[spec.Match.Param + "_display"]?.GetValue<string>()
                              ?? fieldsObj?[spec.Match.Param]?.ToString();
                 }
-                if (!string.IsNullOrWhiteSpace(matchVal) && !lookup.ContainsKey(matchVal!))
-                    lookup[matchVal!] = id.Value;
+                if (string.IsNullOrWhiteSpace(matchVal)) continue;
+                // Two elements sharing a match value make the mapping ambiguous. Silently
+                // keeping the first would write the row's data to an arbitrary one of them.
+                if (!lookup.TryAdd(matchVal!, id.Value))
+                    duplicateKeys.Add(matchVal!);
             }
+        }
+
+        if (duplicateKeys.Count > 0)
+        {
+            var sample = string.Join(", ", duplicateKeys.Distinct().Take(5).Select(k => $"'{k}'"));
+            return new ImportDryRunResult(
+                $"Tham số đối chiếu '{spec.Match.Param}' bị trùng trên nhiều phần tử ({sample}" +
+                $"{(duplicateKeys.Distinct().Count() > 5 ? ", …" : "")}) nên không xác định được ghi vào đâu. " +
+                "Hãy dùng một tham số định danh duy nhất (vd ElementId hoặc Mark đã chuẩn hoá).", spec);
         }
 
         // Match each import row against the lookup
@@ -88,7 +112,51 @@ public static class ImportExecutor
                 unmatched.Add((i + 2, matchVal));
         }
 
+        // Validate the writes for real: import_parameters is a ModelWrite, so Core runs it
+        // in a transaction and rolls back on dryRun. Building a lookup only proves the
+        // elements exist — this proves the parameters exist, are writable, accept the value
+        // and actually took it. Without it the first genuine write attempt is the commit.
+        if (matched.Count > 0)
+        {
+            var probe = await revit.CallAsync("import_parameters",
+                new JsonObject { ["items"] = BuildItems(table, spec, matched) }, true, ct)
+                .ConfigureAwait(false);
+
+            if (!IsOk(probe))
+                return new ImportDryRunResult(ErrorOf(probe), spec);
+
+            var failed = (probe["data"] as JsonObject)?["failed"]?.GetValue<int>() ?? 0;
+            if (failed > 0)
+            {
+                return new ImportDryRunResult(
+                    $"Thử ghi (không commit) thất bại ở {failed} mục — kiểm tra lại tên tham số, " +
+                    "kiểu dữ liệu hoặc tham số chỉ đọc. Chưa có gì được ghi vào model.", spec);
+            }
+        }
+
         return new ImportDryRunResult(spec, lookup.Count, matched, unmatched);
+    }
+
+    /// <summary>Flattens matched rows into the item list import_parameters expects.</summary>
+    private static JsonArray BuildItems(
+        ImportedTable table, UpdateParamsSpec spec, IReadOnlyList<RowMatch> matched)
+    {
+        var items = new JsonArray();
+        foreach (var match in matched)
+        {
+            foreach (var set in spec.Sets)
+            {
+                var colIdx = ColIndex(table, set.Column);
+                var value = colIdx >= 0 && colIdx < match.Row.Count ? match.Row[colIdx] : "";
+                items.Add(new JsonObject
+                {
+                    ["elementId"] = match.ElementId,
+                    ["parameterName"] = set.Param,
+                    ["value"] = value,
+                });
+            }
+        }
+        return items;
     }
 
     private static async Task<ImportDryRunResult> DryRunSheetsAsync(
@@ -145,22 +213,8 @@ public static class ImportExecutor
         IRevitBridge revit, ImportedTable table, UpdateParamsSpec spec,
         ImportDryRunResult dryRun, CancellationToken ct)
     {
-        // Build the items array from matched rows
-        var items = new JsonArray();
-        foreach (var match in dryRun.MatchedRows)
-        {
-            foreach (var set in spec.Sets)
-            {
-                var colIdx = ColIndex(table, set.Column);
-                var value = colIdx >= 0 && colIdx < match.Row.Count ? match.Row[colIdx] : "";
-                items.Add(new JsonObject
-                {
-                    ["elementId"] = match.ElementId,
-                    ["parameterName"] = set.Param,
-                    ["value"] = value,
-                });
-            }
-        }
+        // Same builder the dry-run validated, so what was proven is what gets committed.
+        var items = BuildItems(table, spec, dryRun.MatchedRows);
 
         if (items.Count == 0)
             return new ImportCommitResult(0, 0, null);

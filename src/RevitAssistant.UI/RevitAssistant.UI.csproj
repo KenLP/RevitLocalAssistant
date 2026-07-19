@@ -14,6 +14,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Lets tests reach internal helpers (e.g. CSV cell escaping) without
+         widening the public surface just to make them testable. -->
+    <InternalsVisibleTo Include="RevitAssistant.UI.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="ClosedXML" Version="0.104.2" />
   </ItemGroup>
