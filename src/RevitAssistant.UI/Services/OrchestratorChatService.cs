@@ -60,13 +60,13 @@ public sealed class OrchestratorChatService : IChatService
         IReadOnlyList<(long Id, string? Before)> Changes);
 
     public OrchestratorChatService(
-        ILlmClient llm, IRevitBridge revit, string? modelSchemaJson = null, int contextTokens = 8192)
+        ILlmClient llm, IRevitBridge revit, string? modelSchemaJson = null, int contextTokens = OllamaClient.DefaultNumCtx)
     {
         _llm = llm ?? throw new ArgumentNullException(nameof(llm));
         _revit = revit ?? throw new ArgumentNullException(nameof(revit));
         _modelSchemaJson = modelSchemaJson;
         _tools = ToolSpecAdapter.BuildToolSurface();
-        _contextTokens = contextTokens > 0 ? contextTokens : 8192;
+        _contextTokens = contextTokens > 0 ? contextTokens : OllamaClient.DefaultNumCtx;
         _trimCeiling = (int)(_contextTokens * 0.90);   // never feed the model more than this
         _trimTarget = (int)(_contextTokens * 0.65);    // after trimming, aim for this
     }

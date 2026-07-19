@@ -28,10 +28,22 @@ public sealed class OllamaClient : ILlmClient, IDisposable
     private const int MaxRetries = 3;
     private const int DefaultTimeoutSeconds = 180;
 
+    /// <summary>
+    /// Context window requested from Ollama.
+    ///
+    /// This has to hold the tool definitions AND the system prompt AND the conversation.
+    /// The first two alone are ~8.8k tokens; at the previous 8192 they overflowed the
+    /// window, Ollama truncated from the front, and the system prompt — the part carrying
+    /// the "answer in Vietnamese" and workflow rules — was what got cut. The model then
+    /// replied in the wrong language and invented tool names. ToolSurfaceBudgetTests
+    /// guards the headroom; raise this (or shrink the surface) before adding tools.
+    /// </summary>
+    public const int DefaultNumCtx = 16384;
+
     public OllamaClient(
         string baseUrl = "http://localhost:11434",
         string model = "qwen2.5:7b-instruct",
-        int numCtx = 8192,
+        int numCtx = DefaultNumCtx,
         int timeoutSeconds = DefaultTimeoutSeconds)
     {
         _http = new HttpClient

@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-07-19 — fix context overflow that was silently disabling the system prompt
+
+Found by running the add-in in Revit for real. The model had become unusable: it answered
+in Spanish, skipped `echo_interpretation`, gave canned replies and invented a tool called
+`query`.
+
+**Cause.** Tool definitions plus the system prompt are sent on every request. That fixed
+cost had reached ~9,530 tokens against a `num_ctx` of **8192**. Ollama truncates from the
+front of the prompt, so what got cut was the system prompt itself — the model lost "always
+answer in Vietnamese", the workflow rules and the list of valid tools. The code was
+correct and every unit test passed; only the product was broken.
+
+Measured, before → after this fix:
+
+| | before my changes | at the regression | now |
+|---|---|---|---|
+| tools offered | 28 | 32 | 30 |
+| fixed cost | ~8,347 tok | ~9,530 tok | ~8,803 tok |
+| % of `num_ctx` | 101.9% (8192) | 116.3% (8192) | **53.7%** (16384) |
+
+The surface was *already* over budget at 28 tools; the four tools added on 2026-07-15 took
+it from marginal to badly over.
+
+- **Dropped `raycast_headroom` and `create_detail_line` from the model's tool surface.**
+  They cost ~630 tokens of JSON schema for tools that need raw (x,y) coordinates a chat
+  user never supplies. Both remain in `ToolPolicy` as dispatchable-but-not-LLM-callable, so
+  internal callers and a future UI keep them and the write gating is unchanged.
+- **Raised `num_ctx` 8192 → 16384**, now single-sourced as `OllamaClient.DefaultNumCtx`.
+  The previous value could not hold even the pre-existing surface.
+- **Added `ToolSurfaceBudgetTests`** — fails if tools + prompt exceed 70% of the window, if
+  they exceed it outright, or if any single tool costs more than ~800 tokens. Verified it
+  goes red at the old 8192 setting. Nothing guarded this before, which is why a silent
+  product regression survived a green test suite.
+- Fixed `DiagnosticsRedactor` mangling escaped non-ASCII: `ContextSnapshot` is JSON inside
+  JSON, so Vietnamese arrives as `kh\\u00f4ng`, and the UNC pattern matched the doubled
+  backslashes — every diagnostic message was logged as `kh[path] t[path]`.
+
+Verified live in Revit 2026 afterwards: *"có bao nhiêu phòng trong model?"* → **"Có 54
+phòng trong model."** in Vietnamese, context at 30%.
+
 ## 2026-07-18 (2) — atomic undo, diagnostics control, installer scaffolding
 
 - **Undo is now genuinely atomic.** It previously issued one `set_parameter_batch` per

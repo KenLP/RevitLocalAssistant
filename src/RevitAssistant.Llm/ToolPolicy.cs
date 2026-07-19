@@ -124,14 +124,22 @@ public static class ToolPolicy
 
             // ── Transient write — needs a transaction, leaves nothing behind ──
             // Creates a temporary 3D view for the raycast and deletes it in a finally block.
-            new("raycast_headroom", ToolKind.TransientWrite, PreviewStrategy.None, LlmExposed: true),
+            //
+            // NOT offered to the model. Its schema costs ~292 tokens and it needs raw (x,y)
+            // coordinates a chat user never supplies, so it was pure context overhead — and
+            // the tool list plus system prompt already exceed num_ctx, which makes Ollama
+            // truncate the system prompt and the model lose its instructions entirely.
+            // Still dispatchable for internal callers.
+            new("raycast_headroom", ToolKind.TransientWrite, PreviewStrategy.None, LlmExposed: false),
 
             // ── Model writes — preview + confirm required ─────────────────────
             new("update_where",        ToolKind.ModelWrite, PreviewStrategy.FromDryRun, LlmExposed: true),
             new("tag_all_in_view",     ToolKind.ModelWrite, PreviewStrategy.FromArgs,   LlmExposed: true),
             new("copy_parameters",     ToolKind.ModelWrite, PreviewStrategy.FromArgs,   LlmExposed: true),
             new("configure_schedule",  ToolKind.ModelWrite, PreviewStrategy.FromArgs,   LlmExposed: true),
-            new("create_detail_line",  ToolKind.ModelWrite, PreviewStrategy.FromArgs,   LlmExposed: true),
+            // Not offered to the model for the same reason as raycast_headroom: ~339 tokens
+            // of schema for a tool that needs raw start/end coordinates.
+            new("create_detail_line",  ToolKind.ModelWrite, PreviewStrategy.FromArgs,   LlmExposed: false),
             new("change_element_type", ToolKind.ModelWrite, PreviewStrategy.FromArgs,   LlmExposed: true),
             new("apply_view_template", ToolKind.ModelWrite, PreviewStrategy.FromArgs,   LlmExposed: true),
             new("set_level_elevation", ToolKind.ModelWrite, PreviewStrategy.FromArgs,   LlmExposed: true),

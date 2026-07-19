@@ -92,7 +92,7 @@ public sealed class App : IExternalApplication
         var model = Environment.GetEnvironmentVariable("REVIT_ASSISTANT_MODEL")
                     ?? "qwen2.5:7b-instruct";
         var numCtx = int.TryParse(
-            Environment.GetEnvironmentVariable("REVIT_ASSISTANT_NUM_CTX"), out var n) ? n : 8192;
+            Environment.GetEnvironmentVariable("REVIT_ASSISTANT_NUM_CTX"), out var n) ? n : OllamaClient.DefaultNumCtx;
 
         var llm = new OllamaClient(endpoint.Url, model, numCtx);
         var bridge = new RevitBridge();
