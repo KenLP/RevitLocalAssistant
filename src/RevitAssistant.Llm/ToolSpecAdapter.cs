@@ -429,7 +429,7 @@ public static class ToolSpecAdapter
                 Schema("""{"type":"object","properties":{}}""")),
 
             new ToolDefinition(
-                "get_room_boundary",
+                "spatial_get_room_boundary",
                 "Get room boundary polylines (outer ring + inner holes) in METRES at the finish face " +
                 "(net clear area, matching IfcSpace). Dùng cho kiểm tra hình học phòng: bề rộng hành " +
                 "lang thông thuỷ, diện tích tịnh, đường bao phòng. Bỏ trống để lấy mọi phòng, hoặc lọc " +

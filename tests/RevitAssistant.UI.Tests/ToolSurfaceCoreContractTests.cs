@@ -37,8 +37,10 @@ public sealed class ToolSurfaceCoreContractTests
 
     private static HashSet<string> CoreCommandNames()
     {
-        var registry = new CommandRegistry();
-        registry.RegisterDefaults();
+        // Same factory App.OnStartup uses: upstream RegisterDefaults() plus the
+        // vendored commands (query_where, update_where, import_parameters), so the
+        // set checked here is exactly the set the add-in dispatches against.
+        var registry = AssistantCommands.CreateRegistry();
         return registry.Names.ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 

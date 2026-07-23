@@ -69,7 +69,7 @@ public sealed class ToolSurfaceBudgetTests
     /// never supplies, so they cost ~630 tokens for capability the model cannot use.
     /// </summary>
     [Theory]
-    [InlineData("raycast_headroom")]
+    [InlineData("spatial_raycast_headroom")]
     [InlineData("create_detail_line")]
     public void CoordinateOnlyTools_StayOffTheModelSurface(string toolName)
     {

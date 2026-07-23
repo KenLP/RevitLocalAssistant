@@ -180,7 +180,7 @@ public static class AssistantPrompt
             đọc/sửa tham số (vẫn là query_where/update_where):
             - **Cửa:** `get_doors` → mọi cửa kèm Width (m), vị trí (x,y) và Level. Dùng cho
               độ rộng thông thuỷ cửa / lối thoát hiểm.
-            - **Đường bao phòng:** `get_room_boundary(id?|number?)` → polyline đường bao
+            - **Đường bao phòng:** `spatial_get_room_boundary(id?|number?)` → polyline đường bao
               phòng (mặt hoàn thiện, diện tích tịnh). Dùng cho bề rộng hành lang, diện tích tịnh.
 
             ## LỌC THEO VIEW HIỆN TẠI

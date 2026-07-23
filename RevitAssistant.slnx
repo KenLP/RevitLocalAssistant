@@ -1,9 +1,9 @@
 <Solution>
-  <Folder Name="/extern/">
-    <Project Path="extern/RevitMCPCore/src/RevitMCP.Core/RevitMCP.Core.csproj">
-      <Platform Project="x64" />
-    </Project>
-  </Folder>
+  <!--
+    extern/RevitMCPCore/src/RevitMCP.Core is deliberately NOT in the solution:
+    its sources are compiled into RevitAssistant.Core (see that csproj). Building
+    it here would produce a RevitMCP.Core.dll that must never ship from this repo.
+  -->
   <Folder Name="/src/">
     <Project Path="src/RevitAssistant.Addin/RevitAssistant.Addin.csproj" />
     <Project Path="src/RevitAssistant.Compliance/RevitAssistant.Compliance.csproj" />

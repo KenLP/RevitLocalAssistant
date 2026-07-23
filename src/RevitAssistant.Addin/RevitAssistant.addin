@@ -4,10 +4,13 @@
     <Name>Revit Local Assistant</Name>
     <!--
       Path is relative to the .addin file. The add-in and ALL its dependencies live in
-      their own subfolder so nothing lands in the shared Addins directory: this add-in
-      and RevitMCPAddin both carry a file called RevitMCP.Core.dll, pinned to different
-      branches with incompatible APIs. Deploying flat meant whichever built last won and
-      the other add-in failed to load.
+      their own subfolder so nothing lands in the shared Addins directory.
+
+      Note the subfolder alone does NOT prevent assembly collisions: .NET Revit resolves
+      assemblies by simple name across one shared load context, so when this add-in also
+      shipped a RevitMCP.Core.dll, whichever add-in loaded first (alphabetical: us) won
+      for both, and a stale copy crashed RevitMCPAddin (2026-07-23 incident). That is why
+      RevitAssistant.Core now compiles the Core sources in and ships no RevitMCP.Core.dll.
     -->
     <Assembly>RevitAssistant\RevitAssistant.dll</Assembly>
     <FullClassName>RevitAssistant.App</FullClassName>

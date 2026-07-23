@@ -34,7 +34,7 @@ public sealed class ToolSpecAdapterTests
     [InlineData("echo_interpretation")]
     [InlineData("clarify")]
     [InlineData("get_doors")]
-    [InlineData("get_room_boundary")]
+    [InlineData("spatial_get_room_boundary")]
     public void BuildToolSurface_ContainsTool(string toolName)
     {
         _tools.Should().Contain(t => t.Name == toolName,
@@ -47,7 +47,7 @@ public sealed class ToolSpecAdapterTests
     [InlineData("set_parameter_batch")]
     [InlineData("rename_element")]
     [InlineData("list_elements")]
-    [InlineData("raycast_headroom")]
+    [InlineData("spatial_raycast_headroom")]
     [InlineData("create_detail_line")]
     public void BuildToolSurface_BlocksRawTools(string toolName)
     {

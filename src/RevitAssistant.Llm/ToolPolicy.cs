@@ -117,7 +117,8 @@ public static class ToolPolicy
             new("get_element_rooms",    ToolKind.Read, PreviewStrategy.None, LlmExposed: true),
             new("get_tags_in_view",     ToolKind.Read, PreviewStrategy.None, LlmExposed: true),
             new("get_doors",            ToolKind.Read, PreviewStrategy.None, LlmExposed: true),
-            new("get_room_boundary",    ToolKind.Read, PreviewStrategy.None, LlmExposed: true),
+            // Upstream renamed get_room_boundary → spatial_get_room_boundary in v0.8.x.
+            new("spatial_get_room_boundary", ToolKind.Read, PreviewStrategy.None, LlmExposed: true),
 
             // Read-only in Core (no transaction), but it does write a PDF to disk.
             new("export_view_pdf",      ToolKind.Read, PreviewStrategy.None, LlmExposed: true),
@@ -130,7 +131,8 @@ public static class ToolPolicy
             // the tool list plus system prompt already exceed num_ctx, which makes Ollama
             // truncate the system prompt and the model lose its instructions entirely.
             // Still dispatchable for internal callers.
-            new("raycast_headroom", ToolKind.TransientWrite, PreviewStrategy.None, LlmExposed: false),
+            // Upstream renamed raycast_headroom → spatial_raycast_headroom in v0.8.x.
+            new("spatial_raycast_headroom", ToolKind.TransientWrite, PreviewStrategy.None, LlmExposed: false),
 
             // ── Model writes — preview + confirm required ─────────────────────
             new("update_where",        ToolKind.ModelWrite, PreviewStrategy.FromDryRun, LlmExposed: true),

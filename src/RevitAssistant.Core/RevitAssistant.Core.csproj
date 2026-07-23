@@ -1,19 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Thin wrapper project.  In Phase 0 this contained CorePlaceholder.cs.
-    Phase 1+: wraps the RevitMCP.Core classlib from the git submodule so
-    all consuming projects (Addin, Schema, Compliance, UI) keep their existing
-    <ProjectReference> paths unchanged.
+    Compiles the RevitMCP.Core sources from the git submodule directly into
+    RevitAssistant.Core.dll instead of referencing RevitMCP.Core.csproj.
 
-    Submodule path: extern/RevitMCPCore  (branch: feat/extract-revit-mcp-core)
+    Why: RevitMCPAddin (the standalone add-in) ships its own RevitMCP.Core.dll.
+    Two add-ins shipping the same simple-named assembly into one Revit load
+    context means whichever loads first wins for both — a stale copy from either
+    side crashes the other (2026-07-23: MissingMethodException on
+    CommandRegistry.get_Count because our Jul 19 copy loaded first).
+    With the sources compiled in here, this repo ships NO assembly named
+    RevitMCP.Core, so no collision is possible. Namespaces stay RevitMCPAddin.*
+    so consuming code is unchanged.
+
+    Submodule path: extern/RevitMCPCore  (tracks RevitMCPServer main)
     To update to a newer commit:
-      cd extern/RevitMCPCore && git pull && cd ../.. && git add extern/RevitMCPCore
-
-    CI note: the submodule url in .gitmodules is currently a local filesystem path.
-    Before pushing to GitHub / enabling CI, update it to the GitHub remote URL:
-      git config -f .gitmodules submodule.extern/RevitMCPCore.url https://github.com/KenLP/RevitMCPServer
-      git submodule sync
+      cd extern/RevitMCPCore && git fetch origin main && git checkout origin/main
+      cd ../.. && git add extern/RevitMCPCore
+    If upstream RevitMCP.Core.csproj ever gains a PackageReference, mirror it here.
   -->
 
   <PropertyGroup>
@@ -25,7 +29,47 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\extern\RevitMCPCore\src\RevitMCP.Core\RevitMCP.Core.csproj" />
+    <Compile Include="..\..\extern\RevitMCPCore\src\RevitMCP.Core\**\*.cs"
+             Exclude="..\..\extern\RevitMCPCore\src\RevitMCP.Core\obj\**;..\..\extern\RevitMCPCore\src\RevitMCP.Core\bin\**" />
+  </ItemGroup>
+
+  <!-- Same Revit API reference pattern as RevitAssistant.Addin -->
+  <ItemGroup Condition="Exists('$(RevitInstallDir)\RevitAPI.dll')">
+    <Reference Include="RevitAPI">
+      <HintPath>$(RevitInstallDir)\RevitAPI.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="RevitAPIUI">
+      <HintPath>$(RevitInstallDir)\RevitAPIUI.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(RevitInstallDir)\RevitAPI.dll') And '$(RevitVersion)' == '2025'">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2025.2.0">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2025.2.0">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(RevitInstallDir)\RevitAPI.dll') And '$(RevitVersion)' == '2026'">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2026.4.10">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2026.4.10">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(RevitInstallDir)\RevitAPI.dll') And '$(RevitVersion)' == '2027'">
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPI" Version="2027.0.20">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Nice3point.Revit.Api.RevitAPIUI" Version="2027.0.20">
+      <PrivateAssets>all</PrivateAssets><IncludeAssets>compile</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
 </Project>

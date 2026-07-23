@@ -62,11 +62,13 @@
   -->
   <!--
     Assemblies go in their OWN subfolder, only the manifest sits in the shared Addins
-    directory (and the manifest's <Assembly> points into the subfolder).
+    directory (and the manifest's <Assembly> points into the subfolder). This is also
+    the layout the installer produces, so dev and release agree.
 
-    Deploying flat put our RevitMCP.Core.dll next to RevitMCPAddin's copy of the same
-    file — different branches, incompatible APIs — so whichever add-in built last broke
-    the other. This is also the layout the installer produces, so dev and release agree.
+    We deliberately ship NO RevitMCP.Core.dll (Core sources are compiled into
+    RevitAssistant.Core.dll — see RevitAssistant.Core.csproj for the incident that
+    forced this). The Delete below scrubs copies left behind by older deploys, which
+    would otherwise still win the shared load context and crash RevitMCPAddin.
   -->
   <PropertyGroup>
     <RevitAddinPayloadFolder>$(RevitAddinFolder)\RevitAssistant</RevitAddinPayloadFolder>
@@ -75,6 +77,8 @@
   <Target Name="DeployToRevitAddinsFolder" AfterTargets="Build"
           Condition="'$(DeployToRevit)' != 'false'">
     <MakeDir Directories="$(RevitAddinPayloadFolder)" />
+    <Delete Files="$(RevitAddinPayloadFolder)\RevitMCP.Core.dll;$(RevitAddinPayloadFolder)\RevitMCP.Core.pdb"
+            TreatErrorsAsWarnings="true" />
     <ItemGroup>
       <_DeployFiles Include="$(TargetDir)*.dll" />
       <_DeployFiles Include="$(TargetDir)*.pdb" />

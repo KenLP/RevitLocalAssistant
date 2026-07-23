@@ -39,8 +39,7 @@ public sealed class App : IExternalApplication
     {
         try
         {
-            var registry = new CommandRegistry();
-            registry.RegisterDefaults();
+            var registry = AssistantCommands.CreateRegistry();
 
             var handler = new RevitMCPExternalEventHandler(registry);
             var extEvent = ExternalEvent.Create(handler);

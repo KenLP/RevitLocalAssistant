@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-07-23 — kill the RevitMCP.Core.dll collision for good; re-sync Core to v0.8.18
+
+The 07-19 subfolder fix was not enough: .NET Revit resolves assemblies by **simple name**
+across one shared load context, so our bundled `RevitMCP.Core.dll` (built Jul 19, pre-0.8.14)
+still won the race against RevitMCPAddin's current copy — RevitAssistant loads first
+alphabetically — and crashed it on startup with
+`MissingMethodException: RevitMCPAddin.Commands.CommandRegistry.get_Count()`.
+
+- **This repo no longer ships any assembly named `RevitMCP.Core`.** The submodule's Core
+  sources are compiled directly into `RevitAssistant.Core.dll` (same namespaces, consumers
+  unchanged), so no name collision is possible regardless of load order or version drift.
+  The dev-deploy target also deletes copies left behind by older deploys.
+- **`extern/RevitMCPCore` re-pinned** from the `feat/extract-revit-mcp-core` fork (9c22e50)
+  to upstream `main` @ f88f451 (v0.8.18 line).
+- **Fork drift absorbed.** Upstream main never merged five fork commands. Two were renamed
+  upstream and we follow (`get_room_boundary` → `spatial_get_room_boundary`,
+  `raycast_headroom` → `spatial_raycast_headroom`). Three don't exist upstream at all —
+  `query_where`, `update_where`, `import_parameters` — and the assistant's query/edit/import
+  flows are built on them, so they are now **vendored** in `src/RevitAssistant.Core/Commands/`
+  and registered via `AssistantCommands.CreateRegistry()`, which both `App.OnStartup` and the
+  tool-surface contract tests use (the tests caught this drift exactly as designed).
+- ✅ **Verified in Revit 2026**: both add-ins load (journal shows `API_SUCCESS` for each, no
+  MissingMethodException), and `GET http://127.0.0.1:7891/health` answers `0.8.18` /
+  91 commands. All 275 unit tests pass.
+
 ## 2026-07-19 (2) — stop colliding with RevitMCPAddin in the shared Addins folder
 
 The dev deploy copied every DLL flat into `%APPDATA%\Autodesk\Revit\Addins\<year>\`,
