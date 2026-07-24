@@ -21,6 +21,21 @@ jobs:
           # Phase 1+: fetch the RevitMCP.Core submodule
           submodules: recursive
 
+      - name: Submodule drift guard (RevitMCPCore)
+        # Fails when the pinned commit is no longer on upstream main (e.g. upstream
+        # rebased, as happened after v0.8.18 — pin f88f451 became orphaned).
+        shell: pwsh
+        run: |
+          git -C extern/RevitMCPCore fetch --quiet origin main
+          git -C extern/RevitMCPCore merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) {
+            $pin = git -C extern/RevitMCPCore rev-parse --short HEAD
+            Write-Error ("extern/RevitMCPCore pin $pin is NOT on upstream main (rebase upstream?). " +
+              "Re-sync: cd extern/RevitMCPCore; git fetch origin --tags; git checkout <latest release tag>; " +
+              "cd ../..; git add extern/RevitMCPCore; commit the bump.")
+            exit 1
+          }
+
       - name: Setup .NET 8 + 10
         uses: actions/setup-dotnet@v4
         with:
